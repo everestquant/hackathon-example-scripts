@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Everesteer Futures Tournament — Hosted-Training Starter
+Everesteer Hackathon — Hosted-Training Starter
 
 A LightGBM baseline trained on Everesteer's hosted compute via the platform
 `train` tool: the platform loads the data, runs exped-purged/embargoed

@@ -42,8 +42,9 @@ the submit-lane rule and the upload-budget arithmetic in one place. The
 
 Hackathon-scoped keys run in a mode-aware diagnostics event: there is no live *tournament*
 round, and the event is **normally display-only** — nothing is paid out, and the tournament's
-own staking tools do not apply to your key. "Display-only" does **not** mean the scoring formula
-is inapplicable. It is exactly the formula each round is scored on.
+own staking tools do not apply to your key. "Display-only" describes whether money moves, not
+whether real scoring happens: every round is scored by the platform's own scoring engine, on
+the same terms a round carrying money is.
 
 Some events **do** carry real money on a per-event chain instance — see
 [Event staking](#event-staking). Do not infer which kind you are in from this file.
@@ -128,8 +129,10 @@ the process that pickled the model (`f"{sys.version_info.major}.{sys.version_inf
 from whatever runs your MCP server. A pickle carries no reliable record of its own interpreter,
 and one replayed under a different minor version can die on a native crash with no traceback.
 Omitting it means "not declared" and is treated as `3.11`. The accepted set is per deployment —
-3.11 and 3.12 by default — and a version the platform cannot run is rejected at upload rather
-than silently later.
+3.11, 3.12 and 3.13 by default. An unsupported declaration is **not** rejected at upload on
+these lanes (that is the tournament's `upload_model` path): the platform stores what you
+declared and skips the optional daily-predictions lane instead, so getting it wrong costs you
+quietly rather than loudly.
 
 **What the boards rank on** is described in [What you're optimizing](#what-youre-optimizing).
 Operationally: read `rank_metric` on any leaderboard response for what that board was actually
@@ -290,8 +293,8 @@ the `train` tool — metered, and worth previewing before you commit to it:
   that add little together, and none are strong inverses (the most negative pair is only
   ~-0.18). You still submit a single `target_everest_20` prediction. Full walkthrough: Part B of
   [`notebooks/03_neutralization_and_ensembling.ipynb`](notebooks/03_neutralization_and_ensembling.ipynb).
-- Feature-neutralize to reduce exposure to dominant feature groups — Part A of the same
-  notebook.
+- **Feature neutralization** can add AIMC the same way, by reducing a model's exposure to
+  dominant feature groups — Part A of the same notebook.
 - Lower-turnover models tend to score better over time.
 
 ## Research skills
