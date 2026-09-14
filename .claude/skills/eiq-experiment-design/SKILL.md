@@ -274,7 +274,9 @@ A typical scout round, conceptually:
 get_compute_credits                      # enough budget for ~4 configs?
 get_universe / get_features              # confirm clusters + feature names this round
 download_dataset(universe="futures", split="train")
-download_benchmark(universe="futures", split="validation")   # ai_model baseline
+download_benchmark(universe="futures", split="train")   # ai_model baseline; validation/live are
+                                                          # withheld from a hackathon-scoped key
+                                                          # while an event is running (404 by design)
 for cfg in round_1_configs:              # ~4 configs, each varies ONE thing, sampled expeds
     train(model=cfg.model, gpu="CPU", ...)  -> job_id
 poll get_job_status(job_id) until all done
