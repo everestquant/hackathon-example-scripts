@@ -1,0 +1,49 @@
+# EverestQuant shared ruff config — copy into each repo root (or merge into pyproject.toml under [tool.ruff]).
+# Replaces black + isort + flake8. Run: `ruff format .` and `ruff check --fix .`
+#
+# RETROFIT BASELINE (2026-06): rule set chosen so existing code passes CI.
+# Ratchet plan: re-enable B (bugbear), SIM (simplify), RUF gradually, and drop
+# ignores below as violations get fixed. Don't add new ignores without a comment.
+
+target-version = "py311"
+line-length = 100
+extend-exclude = ["*.ipynb"]  # don't churn starter notebooks
+
+[lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "I",   # isort (import sorting)
+    "UP",  # pyupgrade (modern syntax)
+]
+ignore = [
+    "E501",  # line length — handled by the formatter
+    # retrofit ignores (pre-existing violations; ratchet down over time):
+    "E402",  # imports not at top (deliberate sys.path setup in scripts)
+    "E722",  # bare except
+    "E731",  # lambda assignment
+    "E741",  # ambiguous variable names
+    "F601",  # membership-style comparisons
+    "F841",  # unused variables
+    "UP028", # yield in for loop
+    "UP031", # %-format strings
+]
+
+[lint.per-file-ignores]
+"__init__.py" = ["F401"]                  # re-export pattern
+"src/everestapi/client.py" = ["F821"]     # np/pd names in lazy annotations
+# eiq-platform retrofit baseline (pre-existing; remove entries as fixed):
+"scripts/_archive_*/**" = ["F821", "F401"]            # archived scripts, unmaintained
+"features/panel/build.py" = ["F821"]                  # `date` annotation
+"src/eiq_platform/fund/backtest_engine.py" = ["F821"] # pd annotations
+"src/eiq_sdk/client.py" = ["F821"]                    # np/pd annotations
+"src/eiq_platform/scoring/daily.py" = ["F401"]
+"scripts/compute_feature_ranking.py" = ["F401"]
+"scripts/probe_fix_diag2.py" = ["F401"]
+# WARNING — these three look like real latent NameErrors, ticket + fix, then drop:
+"scripts/maia_discover_futures.py" = ["F821"]         # PORTFOLIO_PLACEHOLDER undefined
+"scripts/modal_train_v5_multitarget.py" = ["F821"]    # V5_FUTURES_DIR undefined
+"scripts/upload_pipeline_keys.py" = ["F821"]          # KEY_FILES undefined
+
+[format]
+quote-style = "double"

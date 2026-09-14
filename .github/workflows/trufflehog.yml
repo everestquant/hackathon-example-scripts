@@ -1,0 +1,24 @@
+name: TruffleHog
+
+# Self-contained secret scan over the PR commit range (public repo can't
+# call the private org reusable workflow).
+
+on:
+  pull_request:
+    branches: ['**']
+
+jobs:
+  trufflehog:
+    name: TruffleHog (secrets)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+        with:
+          fetch-depth: 0
+      - uses: trufflesecurity/trufflehog@27b0417c16317ca9a472a9a8092acce143b49c55  # main
+        with:
+          base: ${{ github.event.pull_request.base.sha }}
+          head: ${{ github.event.pull_request.head.sha }}
+          extra_args: --results=verified,unknown

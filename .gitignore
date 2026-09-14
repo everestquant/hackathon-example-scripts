@@ -1,0 +1,58 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.eiq-agent/
+.ipynb_checkpoints/
+
+# Datasets + trained models — don't commit these
+*.parquet
+*.pkl
+
+# Secrets / local env — never commit your API key or CF service token
+.env
+*.env
+
+# macOS
+.DS_Store
+
+# ---------------------------------------------------------------------
+# Local working scratch
+# ---------------------------------------------------------------------
+# This repo is small, but a working clone accumulates hundreds of MB beside
+# it. In the predecessor repo one bulk stage captured a scratch file holding
+# 32 live AWS presigned URLs (X-Amz-Credential / X-Amz-Signature) and was
+# stopped only by the pre-commit hook. This repo is PUBLIC. The hook is the
+# second line of defence, not the only one.
+
+# Hosted-job payloads and dataset scratch — presigned URLs live here
+data/
+serverless_artifacts/
+
+# Research outputs: experiment write-ups, candidate models, prediction CSVs
+experiments/
+models/
+
+# Predictions / models produced by the starters
+*_predictions.parquet
+hackathon_predictions.parquet
+hackathon_model.pkl
+hosted_predictions.parquet
+hosted_model.pkl
+*-submission.csv
+
+# Session transcripts and agent tooling state
+.gstack/
+conversation-log.md
+*-transcript.md
+
+# A clone of this repo checked out inside itself
+/hackathon-example-scripts/
+
+# notebooks/ ships exactly the four notebooks below; everything else in there
+# is local scratch. An allowlist is used deliberately rather than a pattern
+# list: this repo is PUBLIC, and a new scratch filename must fail closed
+# rather than be silently committable.
+notebooks/*
+!notebooks/*.ipynb

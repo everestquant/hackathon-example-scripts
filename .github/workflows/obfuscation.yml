@@ -1,0 +1,46 @@
+name: Obfuscation
+
+# Blocks internal vocabulary (competitor names, real instrument names, raw
+# feature names, internal firm terms) from reaching this public repository.
+#
+# The term list is not stored here -- it arrives from the OBFUSCATION_BLOCKLIST
+# secret and exists only in the runner's memory. The scanner prints coordinates
+# and an opaque term id, never the term itself, because these logs are public.
+#
+# Secrets are unavailable to pull requests from forks, so the job cannot run
+# there; the push-to-main run is the backstop that still covers merged code.
+
+on:
+  pull_request:
+    branches: ['**']
+  push:
+    branches: [main]
+
+jobs:
+  obfuscation:
+    name: Obfuscation (internal terms)
+    # Fork PRs get no secret. Skipping is honest; running without the list
+    # would report a green all-clear it never actually verified.
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+        with:
+          python-version: "3.11"
+
+      - name: Scan tracked files
+        env:
+          BLOCKLIST_B64: ${{ secrets.OBFUSCATION_BLOCKLIST }}
+        run: |
+          if [ -z "$BLOCKLIST_B64" ]; then
+            echo "::error::OBFUSCATION_BLOCKLIST is not set for this repository."
+            exit 1
+          fi
+          blocklist="$(mktemp)"
+          trap 'rm -f "$blocklist"' EXIT
+          printf '%s' "$BLOCKLIST_B64" | base64 --decode > "$blocklist"
+          OBFUSCATION_BLOCKLIST="$blocklist" python3 .github/scripts/obfuscation_scan.py
