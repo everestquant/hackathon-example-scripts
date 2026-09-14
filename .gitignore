@@ -46,6 +46,8 @@ hosted_model.pkl
 .gstack/
 conversation-log.md
 *-transcript.md
+*-transcript.txt
+*-give-me-a-tour-*.txt
 
 # A clone of this repo checked out inside itself
 /hackathon-example-scripts/
