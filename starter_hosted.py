@@ -130,7 +130,7 @@ if cadence.get("intake_fenced"):
         "and re-run the submit."
     )
 print(f"Downloading the served {split} split and predicting locally...")
-val = pd.read_parquet(client.download_dataset("futures", split))
+val = pd.read_parquet(client.download_dataset(split=split))
 # The .pkl is a bare estimator trained on a positional array, so the manifest's
 # column order is authoritative — a different order returns plausible-but-wrong
 # predictions rather than an error.
