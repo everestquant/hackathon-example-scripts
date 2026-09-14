@@ -4,7 +4,16 @@ name: lint
 # workflow — the prior caller was silently failing at startup). Uses the
 # repo's ruff.toml.
 
-on: [pull_request]
+# Both jobs run on PRs and again on push to main. The push-to-main run is the
+# backstop that still covers merged code — the same reason obfuscation.yml
+# carries one — and it is deliberate here: without it a direct push to main
+# bypasses the lane guard below entirely, which is the one thing that guard
+# exists to make impossible.
+on:
+  pull_request:
+    branches: ['**']
+  push:
+    branches: [main]
 
 jobs:
   ruff:
