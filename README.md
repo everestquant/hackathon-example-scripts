@@ -4,9 +4,10 @@ Everything you need to compete in an **Everesteer hackathon event**: a starter s
 the whole loop once, four notebooks, and the agent contract in [`AGENTS.md`](AGENTS.md).
 
 Your event key is **hackathon-scoped**, and this repo is the lane it belongs to. The tournament
-starter kit — [`everestquant/example-scripts`](https://github.com/everestquant/example-scripts) —
-is a *different product*: daily public rounds, a different submit call, a different staking
-surface. **Its instructions do not apply to your key.** If you have both open, close that one.
+starter kit — [`everestquant/example-scripts`](https://github.com/everestquant/example-scripts)
+(private until go-live; collaborators have access) — is a *different product*: daily public
+rounds, a different submit call, a different staking surface. **Its instructions do not apply to
+your key.** If you have both open, close that one.
 
 `get_started` is mode-aware: it answers for your key and is the authority on the shape of the
 event you are actually in. Call it first, and call it again before every submit.
@@ -63,7 +64,7 @@ against the same clock.
 |---|---|---|---|
 | **Build & validate** | ~3 hours | `train` — labeled | Fit models. Rehearse on the practice board. Nothing counts yet. |
 | **Round 1 → 4** | ~30 min each | `live` — blank target | Predict the open round, submit, read that round's board. |
-| **Complete** | — | — | Cumulative standings are final. |
+| **Complete** | — | — | Cumulative standings are final — unless the event carries money, where the final stake balance decides. |
 
 Those numbers are **one event's configuration, not a rule**: the round count and every phase
 length are set per event, and an event you run next month may look nothing like the table above.
@@ -82,9 +83,10 @@ spendable, and a CPU LightGBM baseline costs well under $1) or locally on your o
 the hosted one.
 
 This is also when the **practice board** runs. `submit_validation_diagnostics` scores you against
-the fixed labeled `validation` split — display-only, but it is a live rehearsal of the whole
-upload path, including the model-pickle requirement. Get one submission through here and round 1
-stops being the moment you discover your pickle is rejected.
+the fixed `validation` split — its target columns are blanked and it is scored server-side, so it
+is display-only, but it is a live rehearsal of the whole upload path, including the model-pickle
+requirement. Get one submission through here and round 1 stops being the moment you discover your
+pickle is rejected.
 
 Build more than one model. Rounds cover different periods, so the model that wins round 1 is not
 reliably the one that wins round 3.
@@ -115,9 +117,10 @@ Three things about rounds that cost people the event:
 - **Don't skip a round.** Standings are a sum across rounds, so a round you never submit to is a
   zero you cannot make up later. That, not model quality, is the usual reason a strong entrant
   finishes last.
-- **Several models ready?** `submit_event_predictions_batch` takes up to 25 in one call, each
-  with its own outcome. Give every item a stable `idempotency_key` so an interrupted run resumes
-  instead of spending your upload allowance twice.
+- **Several models ready?** Over MCP there is a `submit_event_predictions_batch` **tool** that
+  takes up to 25 in one call, each with its own outcome; give every item a stable
+  `idempotency_key` so an interrupted run resumes instead of spending your upload allowance
+  twice. The Python client has no batch method — there, loop `submit_event_predictions`.
 
 ## Reading the clock
 
@@ -148,7 +151,7 @@ the clock, not your intent.
 | When | Call | What it scores |
 |---|---|---|
 | A sealed round is open (`cadence.open_window`) | `submit_event_predictions` | that round's sealed answer key — **what you are ranked and paid on** |
-| No round open | `submit_validation_diagnostics` | the fixed labeled `validation` split, *always* — the display-only practice board |
+| No round open | `submit_validation_diagnostics` | the fixed `validation` split — target columns blanked, scored server-side — *always*; the display-only practice board |
 
 Getting this wrong is expensive, and it fails *late*. The upload is **accepted** (202 pending),
 then fails a couple of minutes later with `None of your predicted ids overlapped the practice
@@ -213,7 +216,9 @@ score rather than any single term: a model tuned on one leaves the rest untouche
 Sharpe, std-dev, feature exposure, max drawdown and autocorrelation are **display-only**
 diagnostics. They do not affect rank.
 
-Per-round scores accumulate into the **cumulative standings**, and those decide the event:
+Per-round scores accumulate into the **cumulative standings**, and on a display-only event those
+decide it — on a money event the final recorded stake balance decides instead, with the round
+score as the mechanism that moves it (see [Money events](#money-events)):
 
 - `get_diagnostics_leaderboard()` — the board for a round (pass `scoring_window` for a specific one)
 - `get_diagnostics_standings()` — cumulative standings across rounds
@@ -228,7 +233,11 @@ Most events are display-only: nothing is paid out. Some carry real event staking
 chain instance, and `get_started`'s `event_staking` block is the **only** authority on which
 kind you are in — do not infer it from this file.
 
-Where staking is on, **each round is its own allocation window**: you draft while the round is
+Where staking is on, the **final recorded stake balance decides the winner**, not the standings
+table — each round scores your locked allocations and settles them back to your event deposit, so
+the round score is the mechanism that grows the balance. Size your allocations accordingly.
+
+**Each round is its own allocation window**: you draft while the round is
 open, and the drafts lock when it closes. Locks are immutable, so draft early and adjust freely,
 but treat the amount standing at lock time as final. `draft_window` from `get_event_staking()`
 is what tells you drafting is open — poll it, don't infer it from a phase name.
@@ -290,5 +299,6 @@ the research skills in [`.claude/skills/`](.claude/skills).
   <https://github.com/everestquant/everestapi-public>
 - Agent contract and full loop: [`AGENTS.md`](AGENTS.md)
 - Research skills for Claude Code and friends: [`.claude/skills/`](.claude/skills)
-- Tournament starter kit (**a different product — not your key**):
+- Tournament starter kit (**a different product — not your key**; private until go-live,
+  accessible to collaborators):
   <https://github.com/everestquant/example-scripts>

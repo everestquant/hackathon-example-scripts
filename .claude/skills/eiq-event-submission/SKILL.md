@@ -55,8 +55,8 @@ into — any recurring submission job runs on **your own** machine/cron/systemd.
 
 | When | Call | What it scores |
 |---|---|---|
-| A sealed round is open (`cadence.open_window`) | `submit_event_predictions` (several models ready at once: `submit_event_predictions_batch`) | the round's sealed answer key — this is what you are ranked and paid on |
-| No round open | `submit_validation_diagnostics` | the fixed labeled validation split, display-only, always available |
+| A sealed round is open (`cadence.open_window`) | `submit_event_predictions` (several models ready at once: the `submit_event_predictions_batch` MCP tool) | the round's sealed answer key — this is what you are ranked and paid on |
+| No round open | `submit_validation_diagnostics` | the fixed validation split (target columns blanked, scored server-side), display-only, always available |
 
 The two calls take the same arguments and are **not interchangeable**: sending a round's
 predictions down the validation lane is accepted (202 pending) and then fails minutes
@@ -170,12 +170,14 @@ else:
     )
 ```
 
-**Several models ready inside one round window?** Submit them together with
-`submit_event_predictions_batch` (up to 25 items, each with its own outcome — read
-`all_succeeded` rather than assuming one failure fails the rest). Give every item a
-stable `idempotency_key` so a retry after an interruption resumes instead of spending
-your upload cap twice; pass `model_pkl_sha256` and an unchanged artifact is reused from
-storage, so a later round transfers only the predictions file.
+**Several models ready inside one round window?** Over MCP, submit them together with
+the `submit_event_predictions_batch` **tool** — it is an MCP tool, not a method on the
+Python client, so on the client you loop `submit_event_predictions` instead. The tool
+takes up to 25 items, each with its own outcome (read `all_succeeded` rather than
+assuming one failure fails the rest). Give every item a stable `idempotency_key` so a
+retry after an interruption resumes instead of spending your upload cap twice; pass
+`model_pkl_sha256` and an unchanged artifact is reused from storage, so a later round
+transfers only the predictions file.
 
 ## 7–8. Verify and monitor
 
@@ -302,7 +304,7 @@ own USDC to a deposit address does not raise what you may allocate.
 | Read the clock | `get_started`, `get_status` — branch on `cadence.open_window` |
 | Served split | `download_dataset(split="live" \| "validation" \| "train")` |
 | Submit a round | `submit_event_predictions(model_id, predictions, model_pkl, model_pkl_python_version)` |
-| Submit several | `submit_event_predictions_batch([...])` |
+| Submit several | `submit_event_predictions_batch` — **MCP tool only**; on the client, loop the row above |
 | Practice board | `submit_validation_diagnostics(model_id, predictions, model_pkl, model_pkl_python_version)` |
 | Board / standings | `get_diagnostics_leaderboard()`, `get_diagnostics_standings()` |
 | Diagnostics | `get_validation_diagnostics` (MCP: `run_validation_diagnostics`) |

@@ -104,11 +104,10 @@ def build_model(params):
     from catboost import CatBoostRegressor
     return CatBoostRegressor(**params, verbose=0)
 '''
-# Preview cost first — dry_run=True resolves defaults and returns estimated_hold_cents
-# without reserving credits or launching anything:
-preview = client.train(model="custom", custom_model_fn=CUSTOM_FN,
-                       params={"iterations": 600, "depth": 6},
-                       gpu="A100", max_hours=2.0, dry_run=True)
+# Preview cost first over MCP: the `train` TOOL takes dry_run=true, which resolves
+# defaults and returns estimated_hold_cents without reserving credits or launching
+# anything. The Python client's train() has no dry_run parameter, so from here you
+# launch directly:
 job = client.train(model="custom", custom_model_fn=CUSTOM_FN,
                    params={"iterations": 600, "depth": 6},
                    gpu="A100", max_hours=2.0)
@@ -118,7 +117,7 @@ result = client.wait_for_job(job["job_id"])
 client.download_model(job["job_id"], output_path="model.pkl")
 ```
 
-Via MCP the equivalents are `train` (same `custom_model_fn` source-string argument), `get_job_status`, `get_job_log`, and `get_model_download_url`; check budget first with `get_compute_credits`, fetch column names with `get_dataset_schema`, and use `download_dataset` for the parquet. `train` runs on metered GPU/CPU — the `CPU` tier is cheapest for anything templated; use `train(..., dry_run=True)` to preview the cost before you commit.
+Via MCP the equivalents are `train` (same `custom_model_fn` source-string argument), `get_job_status`, `get_job_log`, and `get_model_download_url`; check budget first with `get_compute_credits`, fetch column names with `get_dataset_schema`, and use `download_dataset` for the parquet. `train` runs on metered GPU/CPU — the `CPU` tier is cheapest for anything templated; use `train(..., dry_run=true)` to preview the cost before you commit.
 
 Two contract details that bite:
 

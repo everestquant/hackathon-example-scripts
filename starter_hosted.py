@@ -151,7 +151,8 @@ print(f"  {len(submission):,} predictions written to hosted_predictions.parquet"
 # 5. Submit down the lane the clock says is open. A round sent down the
 #    practice lane matches none of a round's ids and settles at $0, so
 #    the cadence below is re-read rather than trusted from step 4.
-#    Several models: submit_event_predictions_batch.
+#    Several models at once: the submit_event_predictions_batch MCP TOOL
+#    (there is no batch method on the Python client - loop this call).
 # =====================================================================
 MODEL_NAME = "hosted-lgbm-baseline"
 client.create_model(MODEL_NAME)  # idempotent — 409 "already exists" is fine

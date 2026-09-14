@@ -27,8 +27,9 @@ you download, and the helpers shipped in this repo. There is no internal platfor
 to read.
 
 Your key is hackathon-scoped: there are no live *tournament* rounds. Your event runs its
-own sealed rounds, entered through `submit_event_predictions` (batch:
-`submit_event_predictions_batch`), read on `get_diagnostics_leaderboard`.
+own sealed rounds, entered through `submit_event_predictions` (over MCP, the
+`submit_event_predictions_batch` tool submits several at once — there is no batch method
+on the Python client), read on `get_diagnostics_leaderboard`.
 `submit_validation_diagnostics` is the display-only practice board and matches none of an
 open round's ids. See the repo-root `AGENTS.md` for the full event mechanics.
 
@@ -104,8 +105,9 @@ Execute round one exactly as the design specified.
 - Downsample: run on a **subset of expeds**, not the full history. The point is to rank
   configs cheaply, not to measure final performance.
 - Prefer `train(model=<preset>, gpu="CPU")` for templated configs; reserve
-  `train(model="custom", ...)` for the variants that need it. `train(..., dry_run=True)`
-  previews cost before you launch. Poll with `get_job_status`; pull artifacts with
+  `train(model="custom", ...)` for the variants that need it. Over MCP, the `train`
+  tool's `dry_run=true` previews cost before you launch (the Python client's `train()`
+  has no `dry_run` parameter). Poll with `get_job_status`; pull artifacts with
   `get_model_download_url`.
 - Score every config the same way: download the benchmark (`download_benchmark` /
   `get_benchmarks`) and evaluate predictions against the Everesteer **`ai_model`**. Compute

@@ -58,8 +58,9 @@ The splits:
 - `split="train"` — the **labeled** set (features + `target_*`), the largest, and what you fit on.
 - `split="live"` — the **blank-target scored** split, serving whichever round is currently open.
   This is the one you are ranked on.
-- `split="validation"` — a labeled practice board that runs *before* round 1. Useful for a dry
-  run; **not** what the event is scored on.
+- `split="validation"` — the **blank-target** practice board that runs *before* round 1. Its
+  target columns are blanked and it is scored server-side, so it rehearses the upload path but
+  cannot be scored locally; **not** what the event is scored on.
 
 Predict on the `id`s of the split the open round serves and submit. The id is the parquet
 **index**, not a column, and its values are opaque strings — submit them verbatim. Answers are
@@ -93,7 +94,7 @@ There are two upload lanes and they are not interchangeable:
 | lane | tool | what it scores |
 |---|---|---|
 | **the open round** — this is what you are ranked and paid on | `submit_event_predictions` | the round's sealed answer key |
-| the practice board — display-only, open in every phase | `submit_validation_diagnostics` | the fixed labeled validation split, *always* |
+| the practice board — display-only, open in every phase | `submit_validation_diagnostics` | the fixed validation split — target columns blanked, scored server-side — *always* |
 
 The two take the same arguments, so sending a round's predictions down the validation lane is an
 easy mistake and an expensive one: the upload is **accepted** (202 pending), then fails a couple
@@ -110,16 +111,17 @@ were fitting, and the lane follows the clock, not your intent.
 submitting to a name it does not know comes back as a 404 telling you to create it first
 (`create_model`). Reuse the same model across rounds so its board history stays on one entry.
 
-**Several models ready inside a round window? Submit them in one call.**
-`submit_event_predictions_batch` takes up to 25 items, each with its own outcome
-(`all_succeeded` tells you whether every one landed — read it, one failed item never fails the
-rest). Give every item a stable `idempotency_key` (the model name works): re-running after an
-interruption resumes instead of spending your upload cap twice. Pass `model_pkl_sha256` each
-round and an unchanged model artifact is reused from storage — later rounds transfer only the
-predictions file. Over the remote MCP this is 3 exchanges for the whole batch (one call returns
-keyless upload commands, run them, one finalize call) instead of 3 per model — the difference
-between fitting a round window and losing it. The practice lane has the same batch shape as
-`submit_diagnostics_batch`.
+**Several models ready inside a round window? Over MCP, submit them in one call.**
+`submit_event_predictions_batch` is an **MCP tool, not a method on the Python client** — on the
+client, loop `submit_event_predictions` instead. The tool takes up to 25 items, each with its own
+outcome (`all_succeeded` tells you whether every one landed — read it, one failed item never
+fails the rest). Give every item a stable `idempotency_key` (the model name works): re-running
+after an interruption resumes instead of spending your upload cap twice. Pass `model_pkl_sha256`
+each round and an unchanged model artifact is reused from storage — later rounds transfer only
+the predictions file. Over the remote MCP this is 3 exchanges for the whole batch (one call
+returns keyless upload commands, run them, one finalize call) instead of 3 per model — the
+difference between fitting a round window and losing it. The practice lane has the same batch
+shape as `submit_diagnostics_batch`.
 
 Hackathon uploads on either lane **require** your model pickle (`model_pkl`) alongside the
 predictions (store-only, never executed; the server rejects the upload without it).
@@ -215,8 +217,9 @@ cumulative result → repeat from the poll for the next round.
 
 Two things in that loop are read, never assumed:
 
-- **Which tool submits a round.** `submit_event_predictions` — or
-  `submit_event_predictions_batch` when more than one model is ready (see the batch note above).
+- **Which tool submits a round.** `submit_event_predictions` — or, over MCP, the
+  `submit_event_predictions_batch` tool when more than one model is ready (see the batch note
+  above).
   `submit_validation_diagnostics` is the practice board and will match none of an open round's
   ids — see the lane table above.
 - **When you may draft a stake.** Read `draft_window` from `get_event_staking()`; do not infer
@@ -280,16 +283,17 @@ the `train` tool — metered, and worth previewing before you commit to it:
   custom model.
 - Seed via `params` (e.g. `params={"seed": 7}` for lightgbm, `{"random_state": 7}` for sklearn
   presets) — a top-level `seed=` argument is rejected.
-- Preview cost before paying: `train(..., dry_run=True)` validates the call, resolves defaults,
-  and returns a cost estimate (`estimated_hold_cents`, `max_runtime_seconds`, resolved
-  `gpu`/`model`/`universe`) without reserving credits or launching anything.
+- Preview cost before paying, **over MCP**: the `train` tool's `dry_run=true` validates the
+  call, resolves defaults, and returns a cost estimate (`estimated_hold_cents`,
+  `max_runtime_seconds`, resolved `gpu`/`model`/`universe`) without reserving credits or
+  launching anything. The Python client's `train()` has no `dry_run` parameter.
 
 ## Tips
 
 - **Ensembling across diverse targets** can add AIMC — optional, and you drive it: the trainer
   fits one target per job, so train a separate model per target (each metered — preview with
-  `dry_run=True`) and blend the predictions yourself. Pick genuinely different targets; some are
-  near-duplicates (`everest_60`/`k2_60` ~0.96, and `k2_20` tracks the scored `everest_20` ~0.93)
+  the MCP `train` tool's `dry_run`) and blend the predictions yourself. Pick genuinely
+  different targets; some are near-duplicates (`everest_60`/`k2_60` ~0.96, and `k2_20` tracks the scored `everest_20` ~0.93)
   that add little together, and none are strong inverses (the most negative pair is only
   ~-0.18). You still submit a single `target_everest_20` prediction. Full walkthrough: Part B of
   [`notebooks/03_neutralization_and_ensembling.ipynb`](notebooks/03_neutralization_and_ensembling.ipynb).

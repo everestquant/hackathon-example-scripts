@@ -8,7 +8,8 @@ your key is scoped to it. The shape of an event:
   1. fit on `train`      — LABELED (features + target_* columns), the largest split
   2. predict `validation` — target columns BLANKED: the PRACTICE board that runs
                             before round 1. Answers stay server-side, always
-  3. then FOUR sealed rounds — each open round is served on `live`
+  3. then N sealed rounds — each open round is served on `live`. FOUR is one
+                            event's configuration, not a rule: read the clock
 
 The objective is to predict the held-out target better than the field.
 

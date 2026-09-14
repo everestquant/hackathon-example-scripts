@@ -87,16 +87,18 @@ Document the chosen interpretation and the rejected ones — that reasoning is p
 - **Idea & novelty.** One sentence: what is being tested and why it might add AIMC.
 - **Research type.** New target/feature-eng · new architecture · ensemble/blend ·
   training-procedure · data/universe change. This decides what you sweep (see below).
-- **Baseline.** Always `ai_model`. Download it and score it on validation so every round
-  has a baseline row.
+- **Baseline.** Always `ai_model`. Download it and score it on **your own embargoed
+  holdout**, carved from the labeled `train` split, so every round has a baseline row. A
+  hackathon key cannot score `validation` locally: its target columns are blanked and the
+  practice board scores it server-side.
 - **Primary metric** = **CORR** (selection — a payout component, above noise; see
   `explain_scoring` for live weights). **Differentiation guard** = correlation-with-benchmark
   (lower is better — it is the offline read on likely AIMC once a round resolves).
   **Diagnostics** = per-exped stability.
 - **Budget.** Max rounds (≈4–5 expected), compute credits, wall-clock. Check
   `get_compute_credits` before you start so you don't strand a round half-finished, and use
-  `train(..., dry_run=True)` to preview a config's `estimated_hold_cents` before committing
-  credits to it.
+  the MCP `train` tool's `dry_run=true` to preview a config's `estimated_hold_cents`
+  before committing credits to it.
 - **Stopping rule.** Pre-commit to the plateau criterion below *now*, before you see results
   — this prevents fishing for a lucky round.
 
@@ -143,8 +145,8 @@ After each round:
 - Sample the expeds: a **scout subset** = every Nth exped (e.g. `sample_pct≈0.25`, ~25%).
 - Use a small feature subset and modest model sizes.
 - Run via `train(model=<preset>, gpu="CPU", ...)` (templated configs on the cheapest
-  tier) — this is the cheap tier. Use `dry_run=True` first if you want a cost preview.
-- Evaluate on the **full** validation split even though you trained on a sample, so the
+  tier) — this is the cheap tier. Over MCP, `dry_run=true` gives a cost preview first.
+- Evaluate on your **full** embargoed holdout even though you trained on a sample, so the
   metric isn't itself sampling-noisy.
 
 **Scale (later rounds).** Promote only the top 1–2 scout configs (by CORR, with lower
@@ -248,7 +250,7 @@ The event dataset is futures, and a single average metric hides the things that 
 | Download the `ai_model` benchmark | `download_benchmark` |
 | Cheap templated training (scout) | `train(model=<preset>, gpu="CPU")` |
 | Custom / GPU training (scale) | `train(model="custom", custom_model_fn=...)` |
-| Preview cost before launching | `train(..., dry_run=True)` |
+| Preview cost before launching | `train(..., dry_run=true)` — **MCP tool only** |
 | Poll a training job | `get_job_status` |
 | Check budget before a round | `get_compute_credits` |
 | Validation metrics for a config | `run_validation_diagnostics` |
@@ -262,8 +264,9 @@ the **gpu default is `T4`** — pass `gpu="CPU"` explicitly for cheap scouts; se
 `params`, e.g. `params={"seed": 7}` — a top-level `seed=` is rejected; returns a job —
 poll `get_job_status`). `train(model="custom", custom_model_fn=<source defining
 build_model(params) -> estimator>, gpu=<CPU|T4|A10G|A100>, max_hours<=4.0)` (runs in an
-isolated, network-denied sandbox; keep the source self-contained). Pass `dry_run=True`
-to either form to get a cost preview (`estimated_hold_cents`) without launching the job.
+isolated, network-denied sandbox; keep the source self-contained). Over MCP, pass
+`dry_run=true` to either form to get a cost preview (`estimated_hold_cents`) without
+launching the job; the Python client's `train()` does not accept it.
 
 A typical scout round, conceptually:
 
