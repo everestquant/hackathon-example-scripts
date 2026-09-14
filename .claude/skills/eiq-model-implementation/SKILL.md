@@ -89,9 +89,11 @@ The custom path is a **source string**, not a script upload: you pass `custom_mo
 from everestapi import EverestAPI
 client = EverestAPI(api_key="...", tournament="futures")
 
-# 1. Get the data locally to develop/smoke-test your model class against.
+# 1. Get the data locally to develop/smoke-test your model class against. With a
+#    hackathon key `validation` is a target-blanked, server-scored practice board,
+#    not a labeled split — build your holdout from an embargoed tail of `train`
+#    instead (Step 2 below).
 client.download_dataset(universe="futures", split="train", output_path="train.parquet")
-client.download_dataset(universe="futures", split="validation", output_path="val.parquet")
 
 # 2. Ship the factory source to compute (GPU for heavy learners).
 #    gpu in {CPU, T4, A10G, A100} — the DEFAULT is T4; CPU is cheapest (no GPU line
@@ -140,10 +142,14 @@ assert isinstance(p, pd.Series) and len(p) == len(sub)
 assert p.index.equals(sub.index) and not p.isna().any()
 ```
 
-**Step 2 — sanity-bound the CORR.** Compute per-exped rank correlation against the target on a *held-out* split (validation, never the rows you trained on):
+**Step 2 — sanity-bound the CORR.** Compute per-exped rank correlation against the target on a *held-out* split, never the rows you trained on. With a hackathon key that is not the downloadable `validation` split — its target columns are blanked (it's a server-scored practice board) — so carve an embargoed tail off the labeled `train` split instead, the same way `notebooks/02_train_and_submit.ipynb` does: hold out the last N expeds, and discard 20 more before the boundary so `target_everest_20`'s 20-day forward window can't leak across it:
 
 ```python
-metrics = EverestAPI.evaluate(preds, val, target="target_everest_20")
+EMBARGO = 20  # target_everest_20 is a 20-day forward return; embargo the boundary
+tail = train["exped"].unique()[-100:]
+holdout = train[train["exped"].isin(tail)]
+
+metrics = EverestAPI.evaluate(preds, holdout, target="target_everest_20")
 ```
 
 A healthy futures model lands at a **small positive** CORR — on the order of a few hundredths. Both tails are red flags:

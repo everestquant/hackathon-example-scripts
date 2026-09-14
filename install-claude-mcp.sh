@@ -25,7 +25,7 @@ PY="$(command -v python3 || command -v python || true)"
 # 2. SDK + MCP extra (no-op if already importable).
 if ! "$PY" -c "import everestapi.mcp" >/dev/null 2>&1; then
   say "Installing everestapi[mcp]…"
-  "$PY" -m pip install --quiet "everestapi[mcp]>=0.3.21"
+  "$PY" -m pip install --quiet "everestapi[mcp]>=0.3.32"
 fi
 
 # 3. Credentials: take from env, prompt for missing (secrets never echoed).

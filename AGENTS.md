@@ -5,7 +5,8 @@ sealed-round mode. If you are an AI agent (Claude Code, Cursor, a ChatGPT agent,
 this repo, this file is your contract for the event.
 
 Your key is **hackathon-scoped**. The tournament repo
-([`everestquant/example-scripts`](https://github.com/everestquant/example-scripts)) describes a
+([`everestquant/example-scripts`](https://github.com/everestquant/example-scripts))
+(private until go-live; collaborators have access) describes a
 different product — daily public rounds and a different submit call — and **none of it applies
 to your key**. Everything you need is here.
 
