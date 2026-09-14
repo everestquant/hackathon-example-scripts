@@ -19,3 +19,82 @@ jobs:
           python-version: "3.11"
       - run: pip install ruff
       - run: ruff check .
+
+  lane-guard:
+    name: no tournament-lane calls
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+
+      # This repo is the EVENT lane. `submit_futures_predictions` and
+      # `validate_submission` belong to the live futures tournament and never
+      # apply to a hackathon key; two of them shipped here anyway (one live call
+      # in a notebook, one written up as an instruction in prose) and cost two
+      # review rounds. This job makes that unmergeable.
+      #
+      # Why the pattern is what it is. Matching call syntax —
+      # `\.(name)[[:space:]]*\(` — does NOT work: starter.py and notebooks/02
+      # carry comments that WARN the reader off these calls, and two of those
+      # warnings quote the call with its parentheses, so a call-syntax pattern
+      # fires on the very lines that exist to prevent the mistake. The real
+      # discriminator is not the parentheses, it is whether the text is a code
+      # comment. `^[^#]*` requires the match to appear with no `#` before it on
+      # the line, so every `#`-comment warning passes and code, markdown prose
+      # and notebook markdown cells are all still checked. That also catches the
+      # prose-instruction form ("...then `submit_futures_predictions`"), which a
+      # call-syntax pattern would have missed — it was one of the two defects.
+      #
+      # `[[:space:]]` / POSIX classes only, and `-E` for alternation: `\|` in a
+      # basic-regex grep is what made an earlier check report a false clean.
+      # Nothing is excluded by path. `.git` is the object store, not content.
+      # If a future file genuinely needs to name one of these outside a comment,
+      # that is a conversation on the PR, not a carve-out added here quietly.
+      #
+      # The failure message prints the two symbols by echoing $PATTERN rather
+      # than spelling them, because spelling them in a shell string would make
+      # this step fail on itself — the check is subject to its own rule. The
+      # PATTERN line is exempt for the honest reason: its own `[^#]` puts a `#`
+      # ahead of the names.
+      - name: No tournament-lane calls or instructions
+        run: |
+          set -uo pipefail
+          PATTERN='^[^#]*(submit_futures_predictions|validate_submission)'
+          HITS="$(grep -rnE --exclude-dir=.git "$PATTERN" . || true)"
+          if [ -n "$HITS" ]; then
+            printf '%s\n' "$HITS"
+            echo ''
+            echo 'Above: a tournament-lane symbol named outside a code comment.'
+            echo "The two banned symbols are the alternation in:  $PATTERN"
+            echo ''
+            echo 'Both belong to the LIVE FUTURES TOURNAMENT and never apply to a hackathon'
+            echo 'key. A hackathon key is ACCEPTED on the round-submit one (202 pending) and'
+            echo 'then fails minutes later on zero id overlap, because the tournament and an'
+            echo 'open event round are disjoint id namespaces. It costs the submission and'
+            echo 'the minutes, and anything staked on that model settles at nothing. This has'
+            echo 'happened on a live money event.'
+            echo ''
+            echo 'Use submit_event_predictions for the open round, or'
+            echo 'submit_validation_diagnostics for the practice board. The other banned'
+            echo 'symbol is the tournament pre-flight and takes a different payload entirely'
+            echo '- check the payload shape yourself instead, the way starter.py does in its'
+            echo 'section 7.'
+            echo ''
+            echo 'Warning a reader OFF these lanes is fine, and is why starter.py names them:'
+            echo 'put it in a # comment and this check passes.'
+            echo '::error::Tournament-lane reference outside a code comment - see the job log.'
+            exit 1
+          fi
+          echo 'OK - no tournament-lane calls or instructions.'
+
+      # Deliberately NOT checked here: the no-metric-ordering rule ("never assert
+      # which of CORR / AIMC / NCORR leads"). It is not machine-checkable on this
+      # tree. The banned assertion and the legitimate warning differ only by a
+      # negation — "CORR dominates" vs "do not assume which term dominates" — and
+      # the prose is hard-wrapped, so the negation and the claim routinely land on
+      # different lines where a line-oriented grep cannot see them together. Even
+      # the seemingly-unconditional phrasings ("dominant payout term") read fine
+      # inside a warning. A check that fired on correct warnings would be muted,
+      # and the lane guard above would be muted with it. The ordering rule stays a
+      # review matter: call explain_scoring, state no ordering.
