@@ -168,7 +168,7 @@ Each of these earns its keep only if it raises differentiated signal — accurac
 
 ## Futures-specific concerns
 
-- **Cluster-aware sample weighting.** Clusters differ wildly in size and volatility (eq, rates, fossil_energy, agriculture, fx, eu_power, metals, volatility). Equal per-row weighting lets the largest cluster dominate the fit. Pass `sample_weight` to balance influence — e.g. inverse-frequency by cluster — so the model generalizes across the universe rather than overfitting one corner.
+- **Cluster-aware sample weighting.** Clusters differ wildly in size and in how dispersed their returns are. Equal per-row weighting lets the largest cluster dominate the fit. Pass `sample_weight` to balance influence — e.g. inverse-frequency by cluster — so the model generalizes across the universe rather than overfitting one corner.
 - **Missing chains / contracts.** The live universe shifts as chains onboard, expire, or fall out of coverage; a chain present in training may be absent live (and vice versa). Never assume a fixed instrument set. Reindex defensively and impute missing features within {0..4} rather than dropping rows.
 - **Robustness across clusters.** A model with a great blended CORR but negative CORR in two clusters is fragile. Check the per-cluster breakdown (from your own out-of-sample predictions, plus `run_validation_diagnostics`) and prefer broadly-positive models over ones that win on one cluster.
 

@@ -130,8 +130,7 @@ badly against the crowd once AIMC resolves.
 For each round: what changed, the best result, and whether it beat the prior best.
 
 ### Per-cluster breakdown
-Does the edge generalize across the futures clusters (eq, rates, fossil_energy,
-agriculture, fx, eu_power, metals, volatility), or is it concentrated in one or two?
+Does the edge generalize across the futures clusters, or is it concentrated in one or two?
 A cluster-concentrated edge is fragile — say so.
 
 ## Standard plot

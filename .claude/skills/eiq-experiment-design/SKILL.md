@@ -70,7 +70,7 @@ clarify idea → align baseline to ai_model → scout round (cheap, sampled)
 
 ## Step 0 — Clarify the idea (disambiguate before spending compute)
 
-If the request is vague ("try a momentum angle", "make it more robust"), do **not** guess.
+If the request is vague ("try a directional-signal angle", "make it more robust"), do **not** guess.
 Enumerate **2–4 genuinely different interpretations**, run one cheap scout `train(model=<preset>, ...)`
 per interpretation on a sampled subset, and let CORR plus correlation-with-benchmark pick the winner.
 
