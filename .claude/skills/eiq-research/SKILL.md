@@ -53,9 +53,11 @@ Pull the current state before committing compute. A few MCP calls:
   (`cadence.open_window`, `phase_ends_at`, `intake_fenced`), and your remaining
   `uploads_remaining`.
 - `get_universe` + `get_features` — which chains/clusters and which `feature_<theme>_<n>`
-  columns exist this round. Features are encoded, integer quintile-binned {0,1,2,3,4};
+  columns exist this round. Features are encoded into integer bins whose count and
+  missing sentinel the schema declares (`feature_encoding`);
   do not try to attach economic meaning.
-- `get_dataset_schema` — confirm the target column (`target_everest_20`) and split layout.
+- `get_dataset_schema` — confirm the graded target column (`primary_target`) and
+  the split layout.
 - `get_models` + `get_diagnostics_leaderboard` + `get_diagnostics_standings` — what you
   already have running and how it ranks.
 - `get_compute_credits` — your budget ceiling for the whole run.
@@ -218,7 +220,7 @@ non-overfit CORR). Then invoke
    correlation-with-benchmark near 1.0. Bottleneck is differentiation, exactly the
    user's hunch.
 2. **Design** (`eiq-experiment-design`) — three-round plan; dimension under test is the
-   target transform (raw `target_everest_20` vs benchmark-residualized); a
+   target transform (the raw graded target vs benchmark-residualized); a
    correlation-with-benchmark bar is set.
 3. **Implement** — none; the residualized-target path is templated. State so and skip.
 4. **Scout** — ~5 configs on a 20%-exped sample. Raw-target configs land decent CORR but

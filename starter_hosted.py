@@ -59,10 +59,13 @@ if available <= 0:
 # tier and the right choice for tree models; the platform runs exped-purged
 # CV with the tournament embargo — no leakage bookkeeping on your side.
 print("Launching hosted train (LightGBM, CPU)...")
+# No `target=`: the platform trains on whichever column the dataset declares as
+# graded. Naming one here pins the job to a literal, and a column name that is
+# right on one dataset does not exist on the next. Pass `target=` only when you
+# deliberately want an AUXILIARY target (see get_dataset_schema -> targets).
 job = client.train(
     model="lightgbm",
     features="all",
-    target="target_everest_20",
     gpu="CPU",
     params={
         "n_estimators": 2000,
@@ -135,12 +138,13 @@ val = pd.read_parquet(client.download_dataset(split=split))
 # column order is authoritative — a different order returns plausible-but-wrong
 # predictions rather than an error.
 #
-# The trainer applies NO missing-value transform: features are quintile bins
-# 0..4 and -1 IS the missing bin, so missingness is bin-coded and the served
-# split carries no NaNs at all. The fill below is therefore a no-op today and
-# exists only so a malformed frame fails predictably. It fills with -1, NOT
-# 0.0: 0 is a real quintile, so filling with it would silently recode "missing"
-# as "lowest bin" the moment a NaN did appear.
+# The trainer applies NO missing-value transform: features are bin-coded and -1
+# IS the missing bin (see get_dataset_schema -> feature_encoding for this
+# dataset's bin count and its `missing` sentinel), so missingness is carried in
+# the bins and the served split carries no NaNs at all. The fill below is
+# therefore a no-op today and exists only so a malformed frame fails
+# predictably. It fills with -1, NOT 0.0: 0 is a real bin, so filling with it
+# would silently recode "missing" as "lowest bin" the moment a NaN did appear.
 x = val[feature_order].fillna(-1.0).to_numpy("float32")
 val_ids = val["id"] if "id" in val.columns else val.index
 submission = pd.DataFrame({"prediction": model.predict(x)}, index=pd.Index(val_ids, name="id"))

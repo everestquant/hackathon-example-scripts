@@ -29,13 +29,16 @@ stops improving.
   metals, equity, power, vol, …). Discover the live shape with `get_universe` /
   `get_features` — never hardcode counts.
 - **Time unit** = **exped** (plural *expeds*). CV is **exped-purged + embargoed**.
-- **Primary target**: `target_everest_20` (20-day forward, rank-normalized).
-- **Features** are encoded, quintile-binned into `{0,1,2,3,4}`, named
-  `feature_<theme>_<n>`. They are already binned — do not re-standardize them.
+- **Primary target**: the column `get_dataset_schema` reports as `primary_target`. Never hardcode it, and do not assume a horizon from
+  the name: most datasets do not encode one there.
+- **Features** are encoded into cross-sectional bins. The bin count, value range and
+  missing sentinel come from the schema's `feature_encoding` — read it rather than
+  assuming. They are already binned — do not re-standardize them.
 - **Benchmark** = `ai_model` (pull it with `download_benchmark`). Your baseline and every
   comparison aligns to it.
 - **Metrics**:
-  - **CORR** — per-exped rank correlation of your predictions vs `target_everest_20`; one of
+  - **CORR** — per-exped rank correlation of your predictions vs the graded
+    target; one of
     the payout components (call `explain_scoring` for the live weights). This is the one
     metric you can measure precisely offline, every round — treat it as your primary
     selection lever.
@@ -258,8 +261,10 @@ The event dataset is futures, and a single average metric hides the things that 
 | Submit the winner into a round | `submit_event_predictions` (see `eiq-event-submission`) |
 
 Confirmed signatures: `train(model=<lightgbm|xgboost|ridge|mlp|random_forest>,
-features=<small|medium|all or an explicit feature list>, target="target_everest_20",
-universe="futures", gpu="CPU", params={...})` (target and universe default as shown;
+features=<a feature-set name from the schema, or an explicit feature list>,
+universe="futures", gpu="CPU", params={...})` (universe defaults as shown, and
+**omit `target=` unless you deliberately want an auxiliary one** — left out, the
+platform trains on the dataset's own graded column;
 the **gpu default is `T4`** — pass `gpu="CPU"` explicitly for cheap scouts; seed via
 `params`, e.g. `params={"seed": 7}` — a top-level `seed=` is rejected; returns a job —
 poll `get_job_status`). `train(model="custom", custom_model_fn=<source defining

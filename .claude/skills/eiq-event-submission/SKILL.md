@@ -35,7 +35,10 @@ into — any recurring submission job runs on **your own** machine/cron/systemd.
   were fitting, and the lane follows the clock, not your intent.
 - **Each round is a disjoint `id` namespace.** A prediction frame built for an earlier
   round will not match the open one, and submitting it scores nothing.
-- The scored target is `target_everest_20` (20-day forward return, rank-normalized).
+- The scored target is whatever `get_dataset_schema` reports as `primary_target`.
+  Read it at runtime: it differs between datasets, it is not necessarily the first
+  entry in `targets`, and `primary_target_listed: false` just means the dataset
+  publishes it under an alias — it is still the column you are graded on.
 - Every event upload — round or practice board — **requires the model's `.pkl`**
   (`model_pkl=`), store-only and never executed. Declare `model_pkl_python_version` from
   the interpreter that pickled the model
