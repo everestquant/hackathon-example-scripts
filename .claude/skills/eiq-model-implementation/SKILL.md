@@ -6,7 +6,8 @@ description: |
 
 # Implementing a Model for an Everesteer Hackathon Event
 
-An Everesteer hackathon event asks you to rank global futures **chains** (grouped into **clusters**) at each **exped** against the `target_everest_20` target. This skill is about the *code* that produces those rankings: how to express a model so it runs cleanly on Everesteer compute, and how to convince yourself the model is real before you put value behind it.
+An Everesteer hackathon event asks you to rank global futures **chains** (grouped into **clusters**) at each **exped** against the event dataset's graded target — the column
+`get_dataset_schema` reports as `primary_target`, read at runtime rather than hardcoded. This skill is about the *code* that produces those rankings: how to express a model so it runs cleanly on Everesteer compute, and how to convince yourself the model is real before you put value behind it.
 
 You never touch any platform-internal repository. Everything here is built on the public `everestapi` SDK, the Everesteer MCP tools, and the helper code in `example-scripts/` plus a `models/` directory you own.
 
@@ -40,10 +41,11 @@ class MyEverestModel:
     def fit(self, X: pd.DataFrame, y: pd.Series, sample_weight=None) -> "MyEverestModel":
         """Train.
 
-        X : feature frame. Columns are encoded, quintile-binned names of the
-            form feature_<theme>_<n>, each value an integer in {0,1,2,3,4}.
+        X : feature frame. Columns are encoded, bin-coded names of the form
+            feature_<theme>_<n>, each value an integer bin; the bin range and
+            the missing sentinel come from the schema's feature_encoding.
             Rows are (exped, chain) observations.
-        y : target_everest_20, rank-normalized forward return, aligned to X.index.
+        y : the graded target (schema primary_target), aligned to X.index.
         sample_weight : optional per-row weights (see cluster weighting below).
         """
         Xn = X.to_numpy(dtype=np.float32)
@@ -136,20 +138,23 @@ The hardest part of the event is not training; it's knowing whether the number y
 
 ```python
 sub = train[train["exped"].isin(train["exped"].unique()[:200])]
-m = MyEverestModel().fit(sub[feats], sub["target_everest_20"])
+m = MyEverestModel().fit(sub[feats], sub[TARGET])  # TARGET = schema['primary_target']
 p = m.predict(sub[feats])
 assert isinstance(p, pd.Series) and len(p) == len(sub)
 assert p.index.equals(sub.index) and not p.isna().any()
 ```
 
-**Step 2 — sanity-bound the CORR.** Compute per-exped rank correlation against the target on a *held-out* split, never the rows you trained on. With a hackathon key that is not the downloadable `validation` split — its target columns are blanked (it's a server-scored practice board) — so carve an embargoed tail off the labeled `train` split instead, the same way `notebooks/02_train_and_submit.ipynb` does: hold out the last N expeds, and discard 20 more before the boundary so `target_everest_20`'s 20-day forward window can't leak across it:
+**Step 2 — sanity-bound the CORR.** Compute per-exped rank correlation against the target on a *held-out* split, never the rows you trained on. With a hackathon key that is not the downloadable `validation` split — its target columns are blanked (it's a server-scored practice board) — so carve an embargoed tail off the labeled `train` split instead, the same way `notebooks/02_train_and_submit.ipynb` does: hold out the last N expeds, and discard enough more before the boundary that the
+target's forward window cannot leak across it. **The horizon is a dataset fact and is
+not encoded in the target's name on every dataset** — check the dataset's own
+documentation or metadata rather than reading a number off the column:
 
 ```python
-EMBARGO = 20  # target_everest_20 is a 20-day forward return; embargo the boundary
+EMBARGO = 20  # >= the target's forward horizon in expeds; widen it if unsure
 tail = train["exped"].unique()[-100:]
 holdout = train[train["exped"].isin(tail)]
 
-metrics = EverestAPI.evaluate(preds, holdout, target="target_everest_20")
+metrics = EverestAPI.evaluate(preds, holdout, target=TARGET)
 ```
 
 A healthy futures model lands at a **small positive** CORR — on the order of a few hundredths. Both tails are red flags:
@@ -165,9 +170,9 @@ Run `run_validation_diagnostics` (MCP) for the platform's own read on feature ex
 
 Payout is a weighted blend of CORR, AIMC, and NCORR — call `explain_scoring` for the live weights and cap; don't hardcode which term dominates. **AIMC** (AI Model Contribution — the contribution beyond the live stake-weighted ai-model consensus) and **NCORR** (Neutralized Correlation) both mean a merely-accurate model that echoes consensus pays little on those components. That score is then scaled by a per-round **payout factor**, frozen at the round's stake lock: 1 below a fixed total-stake threshold, shrinking above it, so it can differ round to round. AIMC is only measurable once a round resolves, so offline you can't observe it directly — judge candidate changes qualitatively, by whether they measurably lower correlation with the benchmark / `ai_model` without giving up real CORR, not against a fabricated offline number. Uniqueness is the lever; the patterns below all chase AIMC.
 
-- **Residualize the target against `ai_model`.** Train on the residual of `target_everest_20` after projecting out the benchmark, so the model can only learn what the benchmark misses. Raises AIMC by lowering correlation with the static benchmark and the live ai-model.
+- **Residualize the target against `ai_model`.** Train on the residual of the graded target after projecting out the benchmark, so the model can only learn what the benchmark misses. Raises AIMC by lowering correlation with the static benchmark and the live ai-model.
 - **Neutralize predictions against the benchmark / heavy features.** OLS-project your raw scores onto the benchmark (or a few dominant feature exposures) and subtract the projection. Lowers correlation to consensus, raising AIMC, usually at a modest CORR cost — tune the neutralization proportion.
-- **Blend multiple targets.** The auxiliary peak targets (k2, lhotse, manaslu, … at 20d/60d) carry related-but-distinct signal; a weighted blend can be steadier than chasing `everest_20` alone. (Check the target correlation matrix first — any pair near correlation −1.0 are inverses; never include both raw.)
+- **Blend multiple targets.** The auxiliary targets (every entry in the schema's `targets` other than the graded one) carry related-but-distinct signal; a weighted blend can be steadier than chasing the graded target alone. Which auxiliaries are diverse and which are near-duplicates is a property of the dataset you are on, so **compute the target correlation matrix yourself** — do not carry numbers over from another event. Any pair near correlation −1.0 are inverses of one signal; never include both raw.
 - **Bag / ensemble.** Average several seeds or row-subsamples to cut variance. Steadier rankings translate to steadier AIMC across rounds, which matters more than a single hot exped.
 
 Each of these earns its keep only if it raises differentiated signal — accuracy that everyone already has is nearly free on the payout formula.
@@ -175,7 +180,7 @@ Each of these earns its keep only if it raises differentiated signal — accurac
 ## Futures-specific concerns
 
 - **Cluster-aware sample weighting.** Clusters differ wildly in size and in how dispersed their returns are. Equal per-row weighting lets the largest cluster dominate the fit. Pass `sample_weight` to balance influence — e.g. inverse-frequency by cluster — so the model generalizes across the universe rather than overfitting one corner.
-- **Missing chains / contracts.** The live universe shifts as chains onboard, expire, or fall out of coverage; a chain present in training may be absent live (and vice versa). Never assume a fixed instrument set. Reindex defensively and impute missing features within {0..4} rather than dropping rows.
+- **Missing chains / contracts.** The live universe shifts as chains onboard, expire, or fall out of coverage; a chain present in training may be absent live (and vice versa). Never assume a fixed instrument set. Reindex defensively and impute missing features within the schema's declared bin range rather than dropping rows.
 - **Robustness across clusters.** A model with a great blended CORR but negative CORR in two clusters is fragile. Check the per-cluster breakdown (from your own out-of-sample predictions, plus `run_validation_diagnostics`) and prefer broadly-positive models over ones that win on one cluster.
 
 ## Where this hands off

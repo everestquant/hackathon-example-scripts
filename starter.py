@@ -97,8 +97,21 @@ except Exception as exc:  # noqa: BLE001
     bail("get_dataset_schema", exc)
 
 targets = schema.get("targets") or []
-target_col = targets[0] if targets else "target_everest_20"
+# The graded column is `primary_target` and only `primary_target`. It is NOT
+# targets[0]: `targets` is the dataset's own target block in its own order, so
+# the first entry is just whichever name happens to sort first, which is a
+# different column on most datasets. Fitting that one instead fails silently.
+target_col = schema.get("primary_target")
+if not target_col:
+    bail(
+        "get_dataset_schema",
+        RuntimeError("schema declares no primary_target - refusing to guess"),
+    )
 print(f"\nTarget: {target_col}   (schema advertises {len(targets)} target(s))")
+if schema.get("primary_target_listed") is False:
+    # Expected on a dataset that publishes the graded column under an alias:
+    # it is served and scored either way. Predict it, do not substitute.
+    print("  note: graded column not listed among 'targets' - predict it anyway")
 
 # =====================================================================
 # 3. Download — train, plus whichever split is scored right now
@@ -134,9 +147,11 @@ print(f"Scored: {len(scored):>8,} rows   split={scored_split}  ({scored_path})")
 # =====================================================================
 # 4. Fit a LightGBM baseline
 # =====================================================================
-# Feature values are ENCODED: cross-sectional quintile bins 0-4. A value of
-# -1.0 means MISSING (the source was not onboarded for that instrument/date) —
-# treat it as NaN or as its own category, NEVER as an ordinal below 0.
+# Feature values are ENCODED into bins. The bin count differs between datasets,
+# so read `schema["feature_encoding"]` rather than assuming one — it declares
+# the bin count, the value range and the `missing` sentinel (commonly -1.0, set
+# where the source was not onboarded for that instrument/date). Treat missing as
+# NaN or as its own category, NEVER as an ordinal below the lowest real bin.
 # A NaN target means the row was uncomputable; it is never imputed, so drop
 # those rows rather than filling them.
 feat_cols = sorted(c for c in train.columns if c.startswith("feature_"))

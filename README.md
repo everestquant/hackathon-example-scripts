@@ -183,8 +183,10 @@ leaves nothing for round 4. Never hardcode a number; read `uploads_remaining` fr
 
 ## The data
 
-Features are **encoded**: cross-sectional quintile bins `0-4`. A value of `-1.0` means
-**missing** — that source was not onboarded for the instrument/date — so treat it as NaN or as
+Features are **encoded** into cross-sectional bins. The bin count and the missing
+sentinel are dataset facts, so read them from `get_dataset_schema` (`feature_encoding`)
+rather than assuming. A value of `-1.0` means **missing** — that source was not
+onboarded for the instrument/date — so treat it as NaN or as
 its own category, never as an ordinal below 0. A NaN target means the row was uncomputable; it
 is never imputed, so drop those rows.
 
@@ -200,7 +202,8 @@ for your key, so read it rather than hardcoding names or counts.
 ## How you're ranked
 
 Each round has its own board, ranked on that round's **round score**: a weighted blend of CORR,
-AIMC and NCORR, bounded per round and measured out-of-sample on `target_everest_20`. In-sample
+AIMC and NCORR, bounded per round and measured out-of-sample on the dataset's graded
+column (`primary_target` in the schema). In-sample
 fit earns nothing.
 
 **CORR** is rank correlation against the realised forward return; **AIMC** is your alpha over

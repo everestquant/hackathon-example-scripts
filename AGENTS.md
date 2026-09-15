@@ -250,8 +250,10 @@ That changes the shape of a good run:
 ## What you're optimizing
 
 Each round's board ranks on that round's **round score**: a weighted blend of CORR, AIMC
-and NCORR, bounded per round and measured out-of-sample on `target_everest_20`. In-sample
-fit earns nothing.
+and NCORR, bounded per round and measured out-of-sample on the column the dataset
+declares as graded. **Read that name from `get_dataset_schema` (`primary_target`)** and
+predict it; it differs between datasets, and it is not necessarily the first entry
+in the schema's `targets` list. In-sample fit earns nothing.
 
 Call `explain_scoring` for the live weights. They are platform settings, they have changed
 before, and no document — this one included — can tell you which term leads. Optimise the
@@ -293,10 +295,13 @@ the `train` tool — metered, and worth previewing before you commit to it:
 
 - **Ensembling across diverse targets** can add AIMC — optional, and you drive it: the trainer
   fits one target per job, so train a separate model per target (each metered — preview with
-  the MCP `train` tool's `dry_run`) and blend the predictions yourself. Pick genuinely
-  different targets; some are near-duplicates (`everest_60`/`k2_60` ~0.96, and `k2_20` tracks the scored `everest_20` ~0.93)
-  that add little together, and none are strong inverses (the most negative pair is only
-  ~-0.18). You still submit a single `target_everest_20` prediction. Full walkthrough: Part B of
+  the MCP `train` tool's `dry_run`) and blend the predictions yourself. The auxiliary
+  targets are the rest of `get_dataset_schema`'s `targets` list; **which of them are
+  near-duplicates and which are genuinely diverse is a property of the dataset you are
+  on, so measure the correlation matrix yourself rather than carrying numbers over from
+  another event.** Near-duplicates add little together; a strongly negative pair are
+  inverses of one signal, so never blend both raw. Whatever you train on, you still
+  submit a single prediction column, scored on the graded target. Full walkthrough: Part B of
   [`notebooks/03_neutralization_and_ensembling.ipynb`](notebooks/03_neutralization_and_ensembling.ipynb).
 - **Feature neutralization** can add AIMC the same way, by reducing a model's exposure to
   dominant feature groups — Part A of the same notebook.

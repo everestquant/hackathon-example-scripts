@@ -16,7 +16,7 @@ internal platform repo to call into.
 ## Ground truth (Everesteer event — futures dataset)
 
 - The event's rounds run on the futures dataset. Time unit is the **exped**.
-- Primary target: `target_everest_20`. Consensus benchmark: `ai_model`.
+- Primary target: the column `get_dataset_schema` reports as `primary_target`. Consensus benchmark: `ai_model`.
 - Payout: a weighted blend of CORR, AIMC, and NCORR, capped per round — call
   `explain_scoring` for the live weights and cap; don't hardcode which term dominates, it
   has changed before. Uniqueness pays more than raw accuracy — say so in the write-up. That
@@ -91,7 +91,7 @@ Use this template. Keep prose tight; every section earns its place.
 
 **Date:** YYYY-MM-DD
 **Event dataset:** futures
-**Target:** target_everest_20
+**Target:** <the schema's primary_target>
 **Selection metric:** CORR, with correlation-with-benchmark as the differentiation guard  ·  **Payout:** weighted CORR+AIMC+NCORR blend (see `explain_scoring` for live weights and cap)
 
 ## Abstract
@@ -107,7 +107,8 @@ State the hypothesis you set out to test.
 - Data: train / validation / live exped ranges actually used.
 - Feature set and any transforms.
 - Model type(s) and key hyperparameters.
-- Cross-validation: scheme + embargo (note 20-day targets need a wider exped embargo).
+- Cross-validation: scheme + embargo (a longer-horizon target needs a wider exped
+  embargo; the horizon is a dataset fact, not something to read off the target name).
 - How each round differed from the previous (if staged).
 
 ## Experiments run
