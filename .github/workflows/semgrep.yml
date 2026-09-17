@@ -1,6 +1,6 @@
 name: Semgrep
 
-# Self-contained SAST — public repo can't call the private org reusable
+# Self-contained SAST: public repo can't call the private org reusable
 # workflow, so we run semgrep directly with community rulesets (no token).
 
 on:

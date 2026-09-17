@@ -1,11 +1,11 @@
-# Everesteer — hackathon example scripts
+# Everesteer: hackathon example scripts
 
 Everything you need to compete in an **Everesteer hackathon event**: a starter script that runs
 the whole loop once, four notebooks, and the agent contract in [`AGENTS.md`](AGENTS.md).
 
 Your event key is **hackathon-scoped**, and this repo is the lane it belongs to. The tournament
-starter kit — [`everestquant/example-scripts`](https://github.com/everestquant/example-scripts)
-(private until go-live; collaborators have access) — is a *different product*: daily public
+starter kit, [`everestquant/example-scripts`](https://github.com/everestquant/example-scripts)
+(private until go-live; collaborators have access), is a *different product*: daily public
 rounds, a different submit call, a different staking surface. **Its instructions do not apply to
 your key.** If you have both open, close that one.
 
@@ -23,7 +23,7 @@ event you are actually in. Call it first, and call it again before every submit.
    ```
 
    `0.3.32` is the floor these examples are written against. Older pins are missing calls you
-   will want — event staking among them.
+   will want, event staking among them.
 
 2. Set your credentials. In onboarding, **Copy setup command** exports both for you; or do it
    by hand:
@@ -34,7 +34,7 @@ event you are actually in. Call it first, and call it again before every submit.
    ```
 
    (`CF_ACCESS_CLIENT_ID` / `CF_ACCESS_CLIENT_SECRET` are only needed against a gated staging or
-   preview host — omit them on the public site. See [Connecting](#connecting).)
+   preview host. Omit them on the public site. See [Connecting](#connecting).)
 
 3. Run the loop once, end to end:
 
@@ -43,7 +43,7 @@ event you are actually in. Call it first, and call it again before every submit.
    ```
 
    It orients on `get_started`, downloads the split that is scored *right now*, fits a LightGBM
-   baseline, and submits down the lane the clock says is correct. Read it before you run it —
+   baseline, and submits down the lane the clock says is correct. Read it before you run it,
    its comments are the short version of this README.
 
 4. Or work through the notebooks in order:
@@ -51,7 +51,7 @@ event you are actually in. Call it first, and call it again before every submit.
    | Notebook | ~Time | What you get |
    |---|---|---|
    | [`notebooks/00_setup_and_connect.ipynb`](notebooks/00_setup_and_connect.ipynb) | 2 min | Connected, and the event clock printed in plain words |
-   | [`notebooks/01_explore_the_data.ipynb`](notebooks/01_explore_the_data.ipynb) | 5 min | The dataset — expeds, encoded features, the `-1` sentinel, the target family |
+   | [`notebooks/01_explore_the_data.ipynb`](notebooks/01_explore_the_data.ipynb) | 5 min | The dataset, expeds, encoded features, the `-1` sentinel, the target family |
    | [`notebooks/02_train_and_submit.ipynb`](notebooks/02_train_and_submit.ipynb) | 10 min | A baseline, honestly evaluated, submitted to the open round |
    | [`notebooks/03_neutralization_and_ensembling.ipynb`](notebooks/03_neutralization_and_ensembling.ipynb) | 20 min | Two techniques for once the baseline works |
 
@@ -62,28 +62,28 @@ against the same clock.
 
 | Phase | Length | The split you use | What you do |
 |---|---|---|---|
-| **Build & validate** | ~3 hours | `train` — labeled | Fit models. Rehearse on the practice board. Nothing counts yet. |
-| **Round 1 → 4** | ~30 min each | `live` — blank target | Predict the open round, submit, read that round's board. |
-| **Complete** | — | — | Cumulative standings are final — unless the event carries money, where the final stake balance decides. |
+| **Build & validate** | ~3 hours | `train`, labeled | Fit models. Rehearse on the practice board. Nothing counts yet. |
+| **Round 1 → 4** | ~30 min each | `live`, blank target | Predict the open round, submit, read that round's board. |
+| **Complete** |, |, | Cumulative standings are final, unless the event carries money, where the final stake balance decides. |
 
 Those numbers are **one event's configuration, not a rule**: the round count and every phase
 length are set per event, and an event you run next month may look nothing like the table above.
-`get_started` reports the real clock — [Reading the clock](#reading-the-clock) shows how to read
+`get_started` reports the real clock, [Reading the clock](#reading-the-clock) shows how to read
 it. Never plan against a number you remember.
 
 ### Build and validate
 
 The labeled `train` split is up, no round is open, and nothing you do counts toward the
-standings. This is by far the longest phase and the only unhurried time you get — spend it
+standings. This is by far the longest phase and the only unhurried time you get, spend it
 fitting models, not reading docs.
 
-Train on hosted compute (`train(model="lightgbm", gpu="CPU", ...)` — your event grant is already
+Train on hosted compute (`train(model="lightgbm", gpu="CPU", ...)`. Your event grant is already
 spendable, and a CPU LightGBM baseline costs well under $1) or locally on your own hardware.
 [`starter.py`](starter.py) walks the local path; [`starter_hosted.py`](starter_hosted.py) does
 the hosted one.
 
 This is also when the **practice board** runs. `submit_validation_diagnostics` scores you against
-the fixed `validation` split — its target columns are blanked and it is scored server-side, so it
+the fixed `validation` split. Its target columns are blanked and it is scored server-side, so it
 is display-only, but it is a live rehearsal of the whole upload path, including the model-pickle
 requirement. Get one submission through here and round 1 stops being the moment you discover your
 pickle is rejected.
@@ -101,13 +101,13 @@ preds = predict(live)                      # your model
 client.submit_event_predictions(
     model_id,
     preds,                                 # id + prediction
-    model_pkl="model.pkl",                 # required — store-only, never executed
+    model_pkl="model.pkl",                 # required, store-only, never executed
     model_pkl_python_version="3.12",       # the interpreter that SAVED the pickle
 )
 ```
 
-Then the round closes, its board scores, and the next one opens. Between rounds — and before
-round 1 is published — `download_dataset(split="live")` **404s cleanly**. That means "no round
+Then the round closes, its board scores, and the next one opens. Between rounds, and before
+round 1 is published, `download_dataset(split="live")` **404s cleanly**. That means "no round
 open right now", never "this split does not exist for my key".
 
 Three things about rounds that cost people the event:
@@ -120,7 +120,7 @@ Three things about rounds that cost people the event:
 - **Several models ready?** Over MCP there is a `submit_event_predictions_batch` **tool** that
   takes up to 25 in one call, each with its own outcome; give every item a stable
   `idempotency_key` so an interrupted run resumes instead of spending your upload allowance
-  twice. The Python client has no batch method — there, loop `submit_event_predictions`.
+  twice. The Python client has no batch method, there, loop `submit_event_predictions`.
 
 ## Reading the clock
 
@@ -130,54 +130,54 @@ Never infer the phase from a name you remember. `get_started` and `get_status` b
 | Field | Example | What it tells you |
 |---|---|---|
 | `phase` | `build`, `round_2`, `done` | which phase is running right now |
-| `open_window` | `round_2`, or `null` | the round accepting predictions — **this is the round signal** |
+| `open_window` | `round_2`, or `null` | the round accepting predictions. **This is the round signal** |
 | `phase_ends_at` | timestamp | when this phase ends |
 | `seconds_until_next_phase` | integer | your countdown |
-| `intake_fenced` | `true` / `false` | `true` while a round settles and the next opens — uploads are briefly refused, so wait rather than retry hard |
+| `intake_fenced` | `true` / `false` | `true` while a round settles and the next opens. Uploads are briefly refused, so wait rather than retry hard |
 
 `get_status` is the cheap poll for "is a round open, and is it accepting uploads?".
 
 **`live_round` is `null` for a hackathon key by design.** It means "no live *public tournament*
-round" and is the discriminator between the two products — it is **not** a statement that no
+round" and is the discriminator between the two products. It is **not** a statement that no
 event round is open. Branch on `cadence.open_window`, never on `live_round`.
 
 ## Which lane to submit down
 
 There are two upload calls. They take the same arguments and they are **not** interchangeable.
 `get_started` is the authority on which one applies, and you should re-read it **immediately
-before every submit** — a round can open or close while you were fitting, and the lane follows
+before every submit**. A round can open or close while you were fitting, and the lane follows
 the clock, not your intent.
 
 | When | Call | What it scores |
 |---|---|---|
-| A sealed round is open (`cadence.open_window`) | `submit_event_predictions` | that round's sealed answer key — **what you are ranked and paid on** |
-| No round open | `submit_validation_diagnostics` | the fixed `validation` split — target columns blanked, scored server-side — *always*; the display-only practice board |
+| A sealed round is open (`cadence.open_window`) | `submit_event_predictions` | that round's sealed answer key. **What you are ranked and paid on** |
+| No round open | `submit_validation_diagnostics` | the fixed `validation` split, target columns blanked, scored server-side. *Always*; the display-only practice board |
 
 Getting this wrong is expensive, and it fails *late*. The upload is **accepted** (202 pending),
 then fails a couple of minutes later with `None of your predicted ids overlapped the practice
-board's ids` — because the two splits are disjoint `id` namespaces. You lose the submission and
+board's ids`. Because the two splits are disjoint `id` namespaces. You lose the submission and
 the minutes, and anything staked on that model settles on nothing. This has happened on a live
 money event: one staked model never got a valid submission and settled at exactly $0.
 
 Two more rules that hold on **both** lanes:
 
-- **Your model pickle is required.** Pass `model_pkl=` alongside the predictions — store-only,
+- **Your model pickle is required.** Pass `model_pkl=` alongside the predictions, store-only,
   never executed. The server rejects a hackathon upload without it, on the practice board too.
 - **Declare the interpreter that *saved* the pickle**, as `model_pkl_python_version="3.12"`,
   read from the process that pickled the model
-  (`f"{sys.version_info.major}.{sys.version_info.minor}"`) — not from whatever runs your agent.
+  (`f"{sys.version_info.major}.{sys.version_info.minor}"`). Not from whatever runs your agent.
   A pickle carries no reliable record of its own interpreter, and one replayed under a different
   minor version can die on a native crash with no traceback. Omitting it means "not declared"
   and is treated as `3.11`.
 
-**Submitting to the open round is entering it.** There is no separate nomination step — the
+**Submitting to the open round is entering it.** There is no separate nomination step, the
 board enforces a per-agent row cap directly and keeps your best rows in its own ranking order.
 
 ## Your upload budget
 
 `uploads_remaining` is how many uploads you have **left**, not your cap. The cap is a
 per-**event** pool: it counts across every model and every round, and it does **not** replenish
-when a new round opens. Budget it across the whole event — spending it on round-1 experiments
+when a new round opens. Budget it across the whole event, spending it on round-1 experiments
 leaves nothing for round 4. Never hardcode a number; read `uploads_remaining` from
 `get_started` or `get_status`.
 
@@ -185,19 +185,19 @@ leaves nothing for round 4. Never hardcode a number; read `uploads_remaining` fr
 
 Features are **encoded** into cross-sectional bins. The bin count and the missing
 sentinel are dataset facts, so read them from `get_dataset_schema` (`feature_encoding`)
-rather than assuming. A value of `-1.0` means **missing** — that source was not
-onboarded for the instrument/date — so treat it as NaN or as
+rather than assuming. A value of `-1.0` means **missing**. That source was not
+onboarded for the instrument/date. So treat it as NaN or as
 its own category, never as an ordinal below 0. A NaN target means the row was uncomputable; it
 is never imputed, so drop those rows.
 
 The downloaded parquet has **no `id` column**. The id every submit lane wants is the parquet
-**index** (its name is `id`), whose values are opaque strings. Submit them verbatim —
+**index** (its name is `id`), whose values are opaque strings. Submit them verbatim,
 renumbering them `0..N-1` produces a submission that matches zero rows.
 
 Call `get_dataset_schema()` for the target list and feature sets. It is mode-aware and answers
 for your key, so read it rather than hardcoding names or counts.
 [`example_predictions.csv`](example_predictions.csv) is a **format** reference for
-`id,prediction` — never submit it, its ids match nothing in an open round.
+`id,prediction`. Never submit it, its ids match nothing in an open round.
 
 ## How you're ranked
 
@@ -212,7 +212,7 @@ not; **NCORR** is your correlation after a fixed core feature set is projected o
 definitions are in [`AGENTS.md`](AGENTS.md#what-youre-optimizing).
 
 Call `explain_scoring` for the live weights. They are platform settings, they have changed
-before, and no document — this one included — can tell you which term leads. Optimise the round
+before, and no document, this one included, can tell you which term leads. Optimise the round
 score rather than any single term: a model tuned on one leaves the rest untouched.
 `rank_metric` on any leaderboard response reports what that board was actually ordered by.
 
@@ -220,13 +220,13 @@ Sharpe, std-dev, feature exposure, max drawdown and autocorrelation are **displa
 diagnostics. They do not affect rank.
 
 Per-round scores accumulate into the **cumulative standings**, and on a display-only event those
-decide it — on a money event the final recorded stake balance decides instead, with the round
+decide it. On a money event the final recorded stake balance decides instead, with the round
 score as the mechanism that moves it (see [Money events](#money-events)):
 
-- `get_diagnostics_leaderboard()` — the board for a round (pass `scoring_window` for a specific one)
-- `get_diagnostics_standings()` — cumulative standings across rounds
+- `get_diagnostics_leaderboard()`: the board for a round (pass `scoring_window` for a specific one)
+- `get_diagnostics_standings()`: cumulative standings across rounds
 
-A sealed-round event has **no held-out final board** — nothing is unsealed later, and each
+A sealed-round event has **no held-out final board**. Nothing is unsealed later, and each
 round's board is the whole of that round's result. Do not assume yours has a second sealed
 board: `get_diagnostics_leaderboard(window="final")` is the authority on whether one exists.
 
@@ -234,28 +234,28 @@ board: `get_diagnostics_leaderboard(window="final")` is the authority on whether
 
 Most events are display-only: nothing is paid out. Some carry real event staking on a per-event
 chain instance, and `get_started`'s `event_staking` block is the **only** authority on which
-kind you are in — do not infer it from this file.
+kind you are in. Do not infer it from this file.
 
 Where staking is on, the **final recorded stake balance decides the winner**, not the standings
-table — each round scores your locked allocations and settles them back to your event deposit, so
+table. Each round scores your locked allocations and settles them back to your event deposit, so
 the round score is the mechanism that grows the balance. Size your allocations accordingly.
 
 **Each round is its own allocation window**: you draft while the round is
 open, and the drafts lock when it closes. Locks are immutable, so draft early and adjust freely,
 but treat the amount standing at lock time as final. `draft_window` from `get_event_staking()`
-is what tells you drafting is open — poll it, don't infer it from a phase name.
+is what tells you drafting is open. Poll it, don't infer it from a phase name.
 
 Every amount is an integer number of **micro-USDC** (1 USDC = 1,000,000), and `amount_usdc` on
 `set_stake_allocation` must be sent as a **string**: a JSON number is refused rather than
 rounded. Only platform-granted money can be staked.
 
-The full surface — `get_event_staking`, `set_stake_allocation`, `withdraw_stake_allocation` — is
+The full surface, `get_event_staking`, `set_stake_allocation`, `withdraw_stake_allocation`, is
 in [`AGENTS.md`](AGENTS.md#event-staking).
 
 ## Connecting
 
 Production needs only your API key. A staging or preview host **also** sits behind Cloudflare
-Access and will bounce an API-key-only request at the edge — typically a `302` to a login page
+Access and will bounce an API-key-only request at the edge, typically a `302` to a login page
 or error `1010`, neither of which looks like an auth failure. The SDK handles it: set
 `CF_ACCESS_CLIENT_ID` and `CF_ACCESS_CLIENT_SECRET` in your environment (or pass
 `cf_access_client_id=` / `cf_access_client_secret=` to `EverestAPI`) and the service-token
@@ -263,7 +263,7 @@ headers ride alongside your key. Interactive `cloudflared access login <host>` a
 
 ### Connect your agent (one command)
 
-Want Claude Code — or any agent that reads `~/.claude.json` — to drive the tools directly? Paste
+Want Claude Code, or any agent that reads `~/.claude.json`, to drive the tools directly? Paste
 onboarding's **Copy setup command** to export your credentials, then run the installer from the
 cloned repo:
 
@@ -276,7 +276,7 @@ for any credential the setup command didn't already export. Restart your agent a
 tools. A zero-install alternative is the hosted MCP endpoint at
 `https://api.everesteer.ai/mcp`, authenticated per-request with your `X-API-Key`.
 
-Agents should read [`AGENTS.md`](AGENTS.md) — it carries the full loop, the staking surface, and
+Agents should read [`AGENTS.md`](AGENTS.md). It carries the full loop, the staking surface, and
 the research skills in [`.claude/skills/`](.claude/skills).
 
 ## Layout
@@ -293,7 +293,7 @@ the research skills in [`.claude/skills/`](.claude/skills).
 | [`install-claude-mcp.sh`](install-claude-mcp.sh) | One-command MCP registration for Claude Code. |
 | [`AGENTS.md`](AGENTS.md) | The agent contract: the loop, the lanes, staking, where to train. |
 | [`.claude/skills/`](.claude/skills) | A research workflow your agent can load. |
-| [`ruff.toml`](ruff.toml) | Lint config — the same rules CI runs. |
+| [`ruff.toml`](ruff.toml) | Lint config. The same rules CI runs. |
 | [`LICENSE.txt`](LICENSE.txt) | MIT. |
 
 ## Links
@@ -302,6 +302,6 @@ the research skills in [`.claude/skills/`](.claude/skills).
   <https://github.com/everestquant/everestapi-public>
 - Agent contract and full loop: [`AGENTS.md`](AGENTS.md)
 - Research skills for Claude Code and friends: [`.claude/skills/`](.claude/skills)
-- Tournament starter kit (**a different product — not your key**; private until go-live,
+- Tournament starter kit (**a different product, not your key**; private until go-live,
   accessible to collaborators):
   <https://github.com/everestquant/example-scripts>
