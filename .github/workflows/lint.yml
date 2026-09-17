@@ -1,12 +1,12 @@
 name: lint
 
 # Self-contained ruff lint (public repo can't call the private org reusable
-# workflow — the prior caller was silently failing at startup). Uses the
+# workflow: the prior caller was silently failing at startup). Uses the
 # repo's ruff.toml.
 
 # Both jobs run on PRs and again on push to main. The push-to-main run is the
-# backstop that still covers merged code — the same reason obfuscation.yml
-# carries one — and it is deliberate here: without it a direct push to main
+# backstop that still covers merged code: the same reason obfuscation.yml
+# carries one: and it is deliberate here: without it a direct push to main
 # bypasses the lane guard below entirely, which is the one thing that guard
 # exists to make impossible.
 on:
@@ -43,8 +43,8 @@ jobs:
       # in a notebook, one written up as an instruction in prose) and cost two
       # review rounds. This job makes that unmergeable.
       #
-      # Why the pattern is what it is. Matching call syntax —
-      # `\.(name)[[:space:]]*\(` — does NOT work: starter.py and notebooks/02
+      # Why the pattern is what it is. Matching call syntax,
+      # `\.(name)[[:space:]]*\(`: does NOT work: starter.py and notebooks/02
       # carry comments that WARN the reader off these calls, and two of those
       # warnings quote the call with its parentheses, so a call-syntax pattern
       # fires on the very lines that exist to prevent the mistake. The real
@@ -53,7 +53,7 @@ jobs:
       # the line, so every `#`-comment warning passes and code, markdown prose
       # and notebook markdown cells are all still checked. That also catches the
       # prose-instruction form ("...then `submit_futures_predictions`"), which a
-      # call-syntax pattern would have missed — it was one of the two defects.
+      # call-syntax pattern would have missed: it was one of the two defects.
       #
       # `[[:space:]]` / POSIX classes only, and `-E` for alternation: `\|` in a
       # basic-regex grep is what made an earlier check report a false clean.
@@ -63,7 +63,7 @@ jobs:
       #
       # The failure message prints the two symbols by echoing $PATTERN rather
       # than spelling them, because spelling them in a shell string would make
-      # this step fail on itself — the check is subject to its own rule. The
+      # this step fail on itself: the check is subject to its own rule. The
       # PATTERN line is exempt for the honest reason: its own `[^#]` puts a `#`
       # ahead of the names.
       - name: No tournament-lane calls or instructions
@@ -100,7 +100,7 @@ jobs:
       # Deliberately NOT checked here: the no-metric-ordering rule ("never assert
       # which of CORR / AIMC / NCORR leads"). It is not machine-checkable on this
       # tree. The banned assertion and the legitimate warning differ only by a
-      # negation — "CORR dominates" vs "do not assume which term dominates" — and
+      # negation: "CORR dominates" vs "do not assume which term dominates", and
       # the prose is hard-wrapped, so the negation and the claim routinely land on
       # different lines where a line-oriented grep cannot see them together. Even
       # the seemingly-unconditional phrasings ("dominant payout term") read fine

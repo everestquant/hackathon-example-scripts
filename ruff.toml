@@ -1,4 +1,4 @@
-# EverestQuant shared ruff config — copy into each repo root (or merge into pyproject.toml under [tool.ruff]).
+# EverestQuant shared ruff config: copy into each repo root (or merge into pyproject.toml under [tool.ruff]).
 # Replaces black + isort + flake8. Run: `ruff format .` and `ruff check --fix .`
 #
 # RETROFIT BASELINE (2026-06): rule set chosen so existing code passes CI.
@@ -17,7 +17,7 @@ select = [
     "UP",  # pyupgrade (modern syntax)
 ]
 ignore = [
-    "E501",  # line length — handled by the formatter
+    "E501",  # line length, handled by the formatter
     # retrofit ignores (pre-existing violations; ratchet down over time):
     "E402",  # imports not at top (deliberate sys.path setup in scripts)
     "E722",  # bare except

@@ -15,50 +15,50 @@ description: >-
 
 A repeatable research loop for an Everesteer hackathon event's sealed rounds, run
 against the futures dataset. You hold the `everestapi` SDK, the Everesteer MCP server,
-your downloaded datasets, and the example-scripts helpers — that is all you need.
+your downloaded datasets, and the example-scripts helpers. That is all you need.
 Everything below is framed around those tools and a `configs/` + `experiments/` layout
 that **you own** in your own repo.
 
 The job is never "get one good run." It is: turn an idea into a sequence of cheap,
-interpretable rounds, read the evidence, and decide the next round — until the signal
+interpretable rounds, read the evidence, and decide the next round, until the signal
 stops improving.
 
 ## Ground truth you must not get wrong
 
 - **Universe** = futures **chains** grouped into **clusters** (energy, rates, ags, FX,
   metals, equity, power, vol, …). Discover the live shape with `get_universe` /
-  `get_features` — never hardcode counts.
+  `get_features`. Never hardcode counts.
 - **Time unit** = **exped** (plural *expeds*). CV is **exped-purged + embargoed**.
 - **Primary target**: the column `get_dataset_schema` reports as `primary_target`. Never hardcode it, and do not assume a horizon from
   the name: most datasets do not encode one there.
 - **Features** are encoded into cross-sectional bins. The bin count, value range and
-  missing sentinel come from the schema's `feature_encoding` — read it rather than
-  assuming. They are already binned — do not re-standardize them.
+  missing sentinel come from the schema's `feature_encoding`. Read it rather than
+  assuming. They are already binned. Do not re-standardize them.
 - **Benchmark** = `ai_model` (pull it with `download_benchmark`). Your baseline and every
   comparison aligns to it.
 - **Metrics**:
-  - **CORR** — per-exped rank correlation of your predictions vs the graded
+  - **CORR**: per-exped rank correlation of your predictions vs the graded
     target; one of
     the payout components (call `explain_scoring` for the live weights). This is the one
-    metric you can measure precisely offline, every round — treat it as your primary
+    metric you can measure precisely offline, every round. Treat it as your primary
     selection lever.
-  - **AIMC** — AI Model Contribution: your unique signal beyond the *live* stake-weighted
+  - **AIMC**, AI Model Contribution: your unique signal beyond the *live* stake-weighted
     ai-model consensus. It is a paid component and the ultimate target, but it is only
-    measurable once a round resolves — you cannot compute it during scout/scale rounds.
+    measurable once a round resolves. You cannot compute it during scout/scale rounds.
     Offline, you cannot read AIMC directly; the best you can do is track **CORR** alongside
     **correlation-with-benchmark** (below) as a qualitative read on whether a config is
     likely to differentiate once it resolves. Do not invent an offline AIMC number.
-  - **NCORR** — Neutralized Correlation: your predictions' correlation with the target after
+  - **NCORR**, Neutralized Correlation: your predictions' correlation with the target after
     neutralizing against dominant feature exposures. A paid futures term alongside CORR
     and AIMC.
   - Always sanity-check **correlation-with-benchmark** (corr of your predictions vs
     `ai_model`): a config with high CORR but correlation-with-benchmark near 1.0 is just
     re-expressing the static benchmark / `ai_model` and is unlikely to earn AIMC once the
     round resolves.
-- **Payout is a weighted blend of CORR, AIMC, and NCORR — call `explain_scoring` for the
+- **Payout is a weighted blend of CORR, AIMC, and NCORR. Call `explain_scoring` for the
   live weights and cap.** Don't hardcode which term dominates; it has changed before.
-  Design for divergence from the crowd — low correlation-with-benchmark, not just high
-  CORR — since that is what AIMC pays for once it resolves. That score is then scaled by
+  Design for divergence from the crowd, low correlation-with-benchmark, not just high
+  CORR. Since that is what AIMC pays for once it resolves. That score is then scaled by
   a per-round **payout factor**, frozen at the round's stake lock: 1 below a fixed
   total-stake threshold, shrinking above it, so it can differ round to round.
 
@@ -71,10 +71,10 @@ clarify idea → align baseline to ai_model → scout round (cheap, sampled)
 
 ---
 
-## Step 0 — Clarify the idea (disambiguate before spending compute)
+## Step 0: Clarify the idea (disambiguate before spending compute)
 
 If the request is vague ("try a directional-signal angle", "make it more robust"), do **not** guess.
-Enumerate **2–4 genuinely different interpretations**, run one cheap scout `train(model=<preset>, ...)`
+Enumerate **2-4 genuinely different interpretations**, run one cheap scout `train(model=<preset>, ...)`
 per interpretation on a sampled subset, and let CORR plus correlation-with-benchmark pick the winner.
 
 > *"Add cross-asset features"* could mean: (a) include FX + rates features in an
@@ -83,9 +83,9 @@ per interpretation on a sampled subset, and let CORR plus correlation-with-bench
 > `sample_pct≈0.25`, compare CORR and correlation-with-benchmark, commit to the best, and
 > write down why in `experiment.md`.
 
-Document the chosen interpretation and the rejected ones — that reasoning is part of the result.
+Document the chosen interpretation and the rejected ones. That reasoning is part of the result.
 
-## Step 1 — Planning checklist (answer before any training)
+## Step 1: Planning checklist (answer before any training)
 
 - **Idea & novelty.** One sentence: what is being tested and why it might add AIMC.
 - **Research type.** New target/feature-eng · new architecture · ensemble/blend ·
@@ -94,18 +94,18 @@ Document the chosen interpretation and the rejected ones — that reasoning is p
   holdout**, carved from the labeled `train` split, so every round has a baseline row. A
   hackathon key cannot score `validation` locally: its target columns are blanked and the
   practice board scores it server-side.
-- **Primary metric** = **CORR** (selection — a payout component, above noise; see
+- **Primary metric** = **CORR** (selection, a payout component, above noise; see
   `explain_scoring` for live weights). **Differentiation guard** = correlation-with-benchmark
-  (lower is better — it is the offline read on likely AIMC once a round resolves).
+  (lower is better. It is the offline read on likely AIMC once a round resolves).
   **Diagnostics** = per-exped stability.
-- **Budget.** Max rounds (≈4–5 expected), compute credits, wall-clock. Check
+- **Budget.** Max rounds (≈4-5 expected), compute credits, wall-clock. Check
   `get_compute_credits` before you start so you don't strand a round half-finished, and use
   the MCP `train` tool's `dry_run=true` to preview a config's `estimated_hold_cents`
   before committing credits to it.
 - **Stopping rule.** Pre-commit to the plateau criterion below *now*, before you see results
-  — this prevents fishing for a lucky round.
+  This prevents fishing for a lucky round.
 
-## Step 2 — Folder layout (you own this)
+## Step 2: Folder layout (you own this)
 
 One experiment = one line of inquiry = one folder. Keep configs, results, and your
 narrative together so the whole study is reproducible from the repo alone.
@@ -128,10 +128,10 @@ experiments/<experiment_name>/
 gains a metrics table after each round, and ends with a short narrative of what worked, what
 didn't, and which config won.
 
-## Step 3 — Rounds, not runs (persistence is required)
+## Step 3: Rounds, not runs (persistence is required)
 
-Work in **rounds of ~4–5 configs**. Within a round, change **exactly one variable per config**
-so the comparison is causal. A round is only finished when **every** job in it has completed —
+Work in **rounds of ~4-5 configs**. Within a round, change **exactly one variable per config**
+so the comparison is causal. A round is only finished when **every** job in it has completed,
 poll `get_job_status`, then synthesize. Do not report off a single early-returning run.
 
 After each round:
@@ -142,28 +142,28 @@ After each round:
    stability as a diagnostic).
 4. Decide the next round: which dimension to push, what to drop. Write the decision down.
 
-## Step 4 — Scout → Scale
+## Step 4: Scout → Scale
 
 **Scout (early rounds).** Iterate fast and cheap so most ideas die before they cost much.
 - Sample the expeds: a **scout subset** = every Nth exped (e.g. `sample_pct≈0.25`, ~25%).
 - Use a small feature subset and modest model sizes.
 - Run via `train(model=<preset>, gpu="CPU", ...)` (templated configs on the cheapest
-  tier) — this is the cheap tier. Over MCP, `dry_run=true` gives a cost preview first.
+  tier). This is the cheap tier. Over MCP, `dry_run=true` gives a cost preview first.
 - Evaluate on your **full** embargoed holdout even though you trained on a sample, so the
   metric isn't itself sampling-noisy.
 
-**Scale (later rounds).** Promote only the top 1–2 scout configs (by CORR, with lower
+**Scale (later rounds).** Promote only the top 1-2 scout configs (by CORR, with lower
 correlation-with-benchmark as the tie-breaker).
 - Move to full expeds (`sample_pct≈1.0`) and richer features.
 - Use `train(model="custom", custom_model_fn=..., gpu=<T4|A10G|A100>, ...)` when a winner
   needs a bigger model or a custom objective the templates don't cover.
-- Expect the metric to move when you scale — that's the point. A scout result that
+- Expect the metric to move when you scale. That's the point. A scout result that
   *collapses* at full scale was overfit to the sample; keep the version that survives.
 
 **One confirmatory scale step.** After you plateau on sampled data, run the surviving config
 once at full expeds + full features to confirm the edge is real before reporting/submitting.
 
-## Step 5 — Plateau / stopping criteria
+## Step 5: Plateau / stopping criteria
 
 Stop when **two consecutive rounds fail to beat the running-best CORR by a meaningful
 margin** *and* the untried knobs are either redundant with what you already swept or
@@ -171,7 +171,7 @@ likely to just raise correlation-with-benchmark (which would erode differentiati
 so the AIMC you'd expect once a round resolves). Then do the single confirmatory scale
 step and write the report.
 
-What "meaningful" means is yours to set per study — fix the threshold up front and judge it
+What "meaningful" means is yours to set per study, fix the threshold up front and judge it
 against round-to-round CORR noise, not against zero. A tiny wobble inside the noise band is a
 plateau, not progress. Record the explicit decision in `experiment.md`, e.g.:
 
@@ -183,7 +183,7 @@ Round 4 → 5:  CORR +0.0000   within noise  → STOP (2 flat rounds)
 Winner: r3_lgbm_all  (best CORR, correlation-with-benchmark 0.71, holds across all clusters)
 ```
 
-(Numbers above are illustrative of the log format only — do not treat them as a target
+(Numbers above are illustrative of the log format only. Do not treat them as a target
 to hit; fix your own per-study threshold as described above.)
 
 ---
@@ -218,16 +218,16 @@ The event dataset is futures, and a single average metric hides the things that 
   spends quarters underwater is worse than a steadier one at the cap.
 - **Contract-roll / liquidity awareness.** Continuous-futures series carry roll seams, and
   thin contracts add noise. Distrust an edge concentrated around roll windows or in the
-  least-liquid chains — verify it survives when those expeds/instruments are down-weighted.
+  least-liquid chains. Verify it survives when those expeds/instruments are down-weighted.
 - **Cluster sample-weighting.** Clusters differ in size and signal density. Consider
   weighting so a few large clusters don't quietly dominate training; treat the weighting
   itself as a sweepable training-procedure dimension.
 - **CORR first; correlation-with-benchmark as the differentiation guard, never the
-  objective.** Every board ranks on the round score, a weighted blend — call
+  objective.** Every board ranks on the round score, a weighted blend. Call
   `explain_scoring` for the live
-  weights — so never trade CORR for uniqueness. *Then* prefer designs that diverge from
+  weights, so never trade CORR for uniqueness. *Then* prefer designs that diverge from
   the static benchmark, `ai_model`, and the crowd: when two configs tie on CORR, take the
-  one with lower correlation-with-benchmark — that differentiation is what the AIMC term
+  one with lower correlation-with-benchmark. That differentiation is what the AIMC term
   pays for once a round resolves.
 
 ---
@@ -239,7 +239,7 @@ The event dataset is futures, and a single average metric hides the things that 
 - Pull it once per universe/split with `download_benchmark` and score it the same way you
   score your configs, so the correlation-with-benchmark comparison (and AIMC once rounds
   resolve) is apples-to-apples.
-- Keep the feature set consistent between a config and the baseline comparison you cite — a
+- Keep the feature set consistent between a config and the baseline comparison you cite, a
   richer-feature config beating a small-feature baseline tells you nothing.
 
 ---
@@ -253,7 +253,7 @@ The event dataset is futures, and a single average metric hides the things that 
 | Download the `ai_model` benchmark | `download_benchmark` |
 | Cheap templated training (scout) | `train(model=<preset>, gpu="CPU")` |
 | Custom / GPU training (scale) | `train(model="custom", custom_model_fn=...)` |
-| Preview cost before launching | `train(..., dry_run=true)` — **MCP tool only** |
+| Preview cost before launching | `train(..., dry_run=true)`, **MCP tool only** |
 | Poll a training job | `get_job_status` |
 | Check budget before a round | `get_compute_credits` |
 | Validation metrics for a config | `run_validation_diagnostics` |
@@ -263,10 +263,10 @@ The event dataset is futures, and a single average metric hides the things that 
 Confirmed signatures: `train(model=<lightgbm|xgboost|ridge|mlp|random_forest>,
 features=<a feature-set name from the schema, or an explicit feature list>,
 universe="futures", gpu="CPU", params={...})` (universe defaults as shown, and
-**omit `target=` unless you deliberately want an auxiliary one** — left out, the
+**omit `target=` unless you deliberately want an auxiliary one**, left out, the
 platform trains on the dataset's own graded column;
-the **gpu default is `T4`** — pass `gpu="CPU"` explicitly for cheap scouts; seed via
-`params`, e.g. `params={"seed": 7}` — a top-level `seed=` is rejected; returns a job —
+the **gpu default is `T4`**. Pass `gpu="CPU"` explicitly for cheap scouts; seed via
+`params`, e.g. `params={"seed": 7}`. A top-level `seed=` is rejected; returns a job,
 poll `get_job_status`). `train(model="custom", custom_model_fn=<source defining
 build_model(params) -> estimator>, gpu=<CPU|T4|A10G|A100>, max_hours<=4.0)` (runs in an
 isolated, network-denied sandbox; keep the source self-contained). Over MCP, pass
@@ -295,5 +295,5 @@ When you stop, write the closing section of `experiment.md` as a short scientifi
 not a metrics dump: the hypothesis, the path the rounds took, what won and *why*, the final
 table (with the `ai_model` baseline row and per-cluster CORR, AIMC where resolved), and the
 explicit stopping decision. Then submit the confirmed winner with `submit_event_predictions`
-(via `eiq-event-submission`) if entering the open round is the goal — so a single session
+(via `eiq-event-submission`) if entering the open round is the goal, so a single session
 can carry an idea from clarification all the way to a submitted model.

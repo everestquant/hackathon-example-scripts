@@ -6,40 +6,40 @@ description: Turn a finished Everesteer hackathon-event (futures dataset) experi
 # Everesteer Report Research
 
 Convert one or more experiment runs in your `experiments/` folder into a finished report
-a reader can follow end to end — what you tested, what won, why you stopped, and whether
+a reader can follow end to end: what you tested, what won, why you stopped, and whether
 you'd stake on it. The goal is a short scientific paper, not a metrics dump.
 
 You own everything here: the `experiments/` folder, the `everestapi` SDK, the Everesteer MCP
 tools, and the plotting/scoring helpers shipped in this example-scripts repo. There is no
 internal platform repo to call into.
 
-## Ground truth (Everesteer event — futures dataset)
+## Ground truth (Everesteer event: futures dataset)
 
 - The event's rounds run on the futures dataset. Time unit is the **exped**.
 - Primary target: the column `get_dataset_schema` reports as `primary_target`. Consensus benchmark: `ai_model`.
-- Payout: a weighted blend of CORR, AIMC, and NCORR, capped per round — call
+- Payout: a weighted blend of CORR, AIMC, and NCORR, capped per round. Call
   `explain_scoring` for the live weights and cap; don't hardcode which term dominates, it
-  has changed before. Uniqueness pays more than raw accuracy — say so in the write-up. That
+  has changed before. Uniqueness pays more than raw accuracy, say so in the write-up. That
   score is then scaled by a per-round **payout factor**, frozen at the round's stake lock:
   1 below a fixed total-stake threshold, shrinking above it, so it can differ round to round.
 - Always report these:
-  - **CORR** — mean per-exped rank correlation of your predictions vs the target; also a
+  - **CORR**: mean per-exped rank correlation of your predictions vs the target; also a
     payout component (see `explain_scoring` for the live weights). This is the primary
     *experiment-selection* metric, since it's the one number you can compute precisely
     offline every round. Report it **two ways**: full-period CORR and a recent-window
-    CORR (most recent ~20–40 expeds).
-  - **AIMC** — AI Model Contribution: contribution beyond the live stake-weighted
+    CORR (most recent ~20-40 expeds).
+  - **AIMC**, AI Model Contribution: contribution beyond the live stake-weighted
     ai-model consensus; a paid component, but only measurable once a round resolves.
     Report it where rounds have resolved; do not fabricate an offline substitute.
-  - **NCORR** — Neutralized Correlation: the other paid futures term, alongside CORR and
+  - **NCORR**, Neutralized Correlation: the other paid futures term, alongside CORR and
     AIMC. Report it where rounds have resolved.
-  - **correlation-with-benchmark** — corr of your preds with `ai_model`. This is the
+  - **correlation-with-benchmark**: corr of your preds with `ai_model`. This is the
     tell for the "high CORR, high correlation-with-benchmark" trap: a model that just
     re-derives the consensus and is unlikely to earn AIMC once resolved.
-  - **stability** — per-exped sharpe (mean/std of the per-exped score) and max drawdown
+  - **stability**: per-exped sharpe (mean/std of the per-exped score) and max drawdown
     of the cumulative score.
 
-## Step 1 — Inventory what actually ran
+## Step 1: Inventory what actually ran
 
 Find the experiment folder. A typical layout:
 
@@ -55,39 +55,39 @@ experiments/<experiment_name>/
 
 Separate **what ran** from **what is only configured**:
 - A config that has a matching `results/` + `predictions/` artifact ran.
-- A config with no artifacts is *planned only* — it goes in the report as "configured,
+- A config with no artifacts is *planned only*. It goes in the report as "configured,
   not run", never in the results table as if it had numbers.
 
 If the run was staged in rounds, capture each round's **intent** (what changed vs the
 prior round) and whether it beat the running best.
 
-## Step 2 — Pull the numbers
+## Step 2: Pull the numbers
 
 Compute metrics from the out-of-sample predictions you already hold locally, or pull them
 with the SDK / MCP for anything already submitted:
-- `run_validation_diagnostics` — validation-split metrics for a candidate (MCP name for
+- `run_validation_diagnostics`: validation-split metrics for a candidate (MCP name for
   `get_validation_diagnostics`).
-- `get_diagnostics_leaderboard` — the board for a round you've submitted to.
-- `get_diagnostics_standings` — cumulative standings across rounds, for context vs the field.
+- `get_diagnostics_leaderboard`: the board for a round you've submitted to.
+- `get_diagnostics_standings`: cumulative standings across rounds, for context vs the field.
 
 Build the per-exped stability series (sharpe, drawdown) yourself from the out-of-sample
-predictions on disk — this skill's numbers should trace back to files in your own
+predictions on disk. This skill's numbers should trace back to files in your own
 `experiments/` folder wherever possible.
 
-Pick the **best model by CORR** (recent-window CORR breaks ties) — CORR is the
+Pick the **best model by CORR** (recent-window CORR breaks ties). CORR is the
 experiment-selection metric, since it's the one number you can compute precisely
 offline. Use correlation-with-benchmark as the differentiation check and per-exped
 stability (plus resolved-round AIMC where available) to confirm the edge isn't a single
 lucky exped. A high-CORR model with high correlation-with-benchmark is *not* clearly the
-winner — flag it as a likely benchmark-echo and note that its AIMC, once a round
+winner, flag it as a likely benchmark-echo and note that its AIMC, once a round
 resolves, may disappoint.
 
-## Step 3 — Write experiment.md
+## Step 3: Write experiment.md
 
 Use this template. Keep prose tight; every section earns its place.
 
 ```markdown
-# <Experiment Name> — Experiment Report
+# <Experiment Name>: Experiment Report
 
 **Date:** YYYY-MM-DD
 **Event dataset:** futures
@@ -99,7 +99,7 @@ Two to four sentences: what was tested, the headline result, and the decision
 (stake / not yet). Lead with CORR and correlation-with-benchmark (AIMC alongside where resolved).
 
 ## Motivation
-Why this idea should produce alpha *beyond the consensus* — i.e. why it should lower
+Why this idea should produce alpha *beyond the consensus*. I.e. why it should lower
 correlation-with-benchmark (and so raise AIMC, the payout driver), not just raise CORR.
 State the hypothesis you set out to test.
 
@@ -122,9 +122,9 @@ One short subsection per config that *actually ran*. Name the artifacts
 | ...   | ...   | ...         | ...            | ...               | ...              | ...              | ...    | ...          | best / kept / dropped |
 
 `payout (est)` is the weighted CORR+AIMC+NCORR blend, before the payout factor and (on
-staked events) the per-round return bound — `explain_scoring` reads all of it live, so
+staked events) the per-round return bound. `explain_scoring` reads all of it live, so
 don't hardcode an ordering or a cap. Call out any high-CORR / high-corr_w/_benchmark rows
-explicitly — accuracy that differentiates nothing scores well offline and still pays
+explicitly. Accuracy that differentiates nothing scores well offline and still pays
 badly against the crowd once AIMC resolves.
 
 ### Round-by-round
@@ -132,7 +132,7 @@ For each round: what changed, the best result, and whether it beat the prior bes
 
 ### Per-cluster breakdown
 Does the edge generalize across the futures clusters, or is it concentrated in one or two?
-A cluster-concentrated edge is fragile — say so.
+A cluster-concentrated edge is fragile, say so.
 
 ## Standard plot
 ![cumulative CORR and correlation-with-benchmark vs ai_model](plots/cumulative_corr.png)
@@ -147,7 +147,7 @@ global). Frame them against correlation-with-benchmark (the differentiation guar
 just CORR.
 
 ## Stopping rationale
-Why you stopped iterating — e.g. CORR plateau over N rounds, recent-window
+Why you stopped iterating, e.g. CORR plateau over N rounds, recent-window
 correlation-with-benchmark no longer improving, diminishing payout per round, or a
 confirmatory full-data run after a scout phase.
 
@@ -156,15 +156,15 @@ What worked, what didn't, what the plot and per-cluster view actually show. Hone
 about negative results.
 
 ## What we'd stake / why (or not yet)
-A clear call in payout terms: would you stake this model, and why — or what specifically
+A clear call in payout terms: would you stake this model, and why, or what specifically
 must improve first (e.g. cluster breadth, benchmark de-correlation, resolved-round AIMC
 once available).
 
 ## Next experiments
-2–5 concrete, prioritized follow-ups tied to the findings above.
+2-5 concrete, prioritized follow-ups tied to the findings above.
 ```
 
-## Step 4 — Generate the standard plot
+## Step 4: Generate the standard plot
 
 The standard Everesteer plot is **cumulative CORR of the best model, plus its rolling
 correlation with the `ai_model` benchmark, over expeds**, built from the run's
@@ -207,7 +207,7 @@ Embed it with a **relative** link so it resolves from inside the experiment fold
 you have several strong candidates, either overlay them on one plot or emit one per
 candidate and link each.
 
-## Step 5 — Final checks
+## Step 5: Final checks
 
 - The plot file exists under `plots/` and the relative link in `experiment.md` resolves.
 - Every number in the results table traces back to a real `results/` artifact.

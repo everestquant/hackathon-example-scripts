@@ -1,22 +1,22 @@
 #!/usr/bin/env python3
 """
-Everesteer Hackathon — Hosted-Training Starter
+Everesteer Hackathon, Hosted-Training Starter
 
 A LightGBM baseline trained on Everesteer's hosted compute via the platform
 `train` tool: the platform loads the data, runs exped-purged/embargoed
 cross-validation, computes canonical tournament metrics (CORR / AIMC estimate
 / NCORR), and returns the model .pkl + a feature manifest. In a hackathon
 your event compute grant is already spendable (`get_started` reports
-`hosted_train_funded`) — a CPU LightGBM baseline holds well under $1.
+`hosted_train_funded`). A CPU LightGBM baseline holds well under $1.
 
 Submission uses the always-correct path: download the .pkl, predict LOCALLY
 on whichever split the platform is currently scoring, and submit that.
 (The job's own predictions artifact is scored against the tree the trainer
-read — predicting on the served split yourself can never id-mismatch.)
+read. Predicting on the served split yourself can never id-mismatch.)
 
 This produces:
-  - hosted_model.pkl              — the platform-trained model
-  - hosted_predictions.parquet    — predictions file (id + prediction)
+  - hosted_model.pkl:              the platform-trained model
+  - hosted_predictions.parquet:    predictions file (id + prediction)
 
 Usage:
     pip install "everestapi>=0.3.32" lightgbm pandas pyarrow
@@ -48,7 +48,7 @@ available = credits.get("available_cents", 0)
 print(f"Compute available: ${available / 100:.2f}")
 if available <= 0:
     raise SystemExit(
-        "No spendable compute balance — in a hackathon the event grant funds this; "
+        "No spendable compute balance, in a hackathon the event grant funds this; "
         "outside one, top up your compute credits before running this again."
     )
 
@@ -57,7 +57,7 @@ if available <= 0:
 # =====================================================================
 # Mirrors the local starter's LightGBM config. gpu="CPU" is the cheapest
 # tier and the right choice for tree models; the platform runs exped-purged
-# CV with the tournament embargo — no leakage bookkeeping on your side.
+# CV with the tournament embargo: no leakage bookkeeping on your side.
 print("Launching hosted train (LightGBM, CPU)...")
 # No `target=`: the platform trains on whichever column the dataset declares as
 # graded. Naming one here pins the job to a literal, and a column name that is
@@ -81,13 +81,13 @@ job = client.train(
     },
 )
 job_id = job["job_id"] if "job_id" in job else job["id"]
-print(f"  Job {job_id} submitted — polling (a CPU baseline takes a few minutes)...")
+print(f"  Job {job_id} submitted. Polling (a CPU baseline takes a few minutes)...")
 
 status = client.wait_for_job(job_id, timeout=3600)
 if status["status"] != "completed":
     raise SystemExit(
         f"Job ended {status['status']}: {status.get('error_message')} "
-        f"— see client.get_job_log({job_id!r}) for the lifecycle trail."
+        f". See client.get_job_log({job_id!r}) for the lifecycle trail."
     )
 
 # =====================================================================
@@ -99,7 +99,7 @@ for name in ("corr", "aimc_estimate", "ncorr"):
     panel = cv.get(name) or {}
     if "mean" in panel:
         print(f"  CV {name:>14}: {panel['mean']:+.4f} (std {panel.get('std', 0):.4f})")
-# aimc_estimate is a pre-submission estimate vs a consensus proxy — the real
+# aimc_estimate is a pre-submission estimate vs a consensus proxy: the real
 # AIMC comes from the diagnostics scoring after you submit.
 
 # =====================================================================
@@ -107,7 +107,7 @@ for name in ("corr", "aimc_estimate", "ncorr"):
 # =====================================================================
 pkl_path = client.download_model(job_id, "hosted_model.pkl")
 # Safe to unpickle: this is YOUR OWN model artifact from YOUR authenticated
-# train job (presigned, ownership-gated download) — not third-party data.
+# train job (presigned, ownership-gated download): not third-party data.
 with open(pkl_path, "rb") as f:
     model = pickle.load(f)
 
@@ -116,7 +116,7 @@ feature_order = manifest["features"]
 
 # Predict on the split the platform is CURRENTLY scoring. In a multi-round
 # cadence event the open round is served as `live` (get_started's cadence
-# object names it); before round 1 — and in a single-window event — the
+# object names it); before round 1: and in a single-window event, the
 # scored split is `validation`. Tournament keys have no cadence object and
 # also land on `validation` here (this script's submit half is the
 # diagnostics loop, not a live-round submission).
@@ -135,7 +135,7 @@ if cadence.get("intake_fenced"):
 print(f"Downloading the served {split} split and predicting locally...")
 val = pd.read_parquet(client.download_dataset(split=split))
 # The .pkl is a bare estimator trained on a positional array, so the manifest's
-# column order is authoritative — a different order returns plausible-but-wrong
+# column order is authoritative: a different order returns plausible-but-wrong
 # predictions rather than an error.
 #
 # The trainer applies NO missing-value transform: features are bin-coded and -1
@@ -159,7 +159,7 @@ print(f"  {len(submission):,} predictions written to hosted_predictions.parquet"
 #    (there is no batch method on the Python client - loop this call).
 # =====================================================================
 MODEL_NAME = "hosted-lgbm-baseline"
-client.create_model(MODEL_NAME)  # idempotent — 409 "already exists" is fine
+client.create_model(MODEL_NAME)  # idempotent, 409 "already exists" is fine
 
 # Re-read the clock. Minutes passed while the job trained and the split
 # downloaded, and the lane follows the clock, not the read you took back then.
@@ -167,7 +167,7 @@ now_cadence = (client.get_started() or {}).get("cadence") or {}
 pyver = f"{sys.version_info.major}.{sys.version_info.minor}"
 
 if now_cadence.get("open_window"):
-    print("A sealed round is OPEN — submitting to the event lane.")
+    print("A sealed round is OPEN, submitting to the event lane.")
     result = client.submit_event_predictions(
         MODEL_NAME,
         "hosted_predictions.parquet",
@@ -175,7 +175,7 @@ if now_cadence.get("open_window"):
         model_pkl_python_version=pyver,
     )
 else:
-    print("No round open — submitting to the validation practice board.")
+    print("No round open, submitting to the validation practice board.")
     result = client.submit_validation_diagnostics(
         MODEL_NAME,
         "hosted_predictions.parquet",
