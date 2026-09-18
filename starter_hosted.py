@@ -19,7 +19,7 @@ This produces:
   - hosted_predictions.parquet:    predictions file (id + prediction)
 
 Usage:
-    pip install "everestapi>=0.3.32" lightgbm pandas pyarrow
+    pip install "everestapi>=0.3.32" lightgbm pandas pyarrow cloudpickle
     export EIQ_API_KEY=...                 # from onboarding
     export EIQ_BASE_URL=https://app.everesteer.ai
     python starter_hosted.py
@@ -31,6 +31,7 @@ import os
 import pickle
 import sys
 
+import cloudpickle
 import pandas as pd
 from everestapi import EverestAPI
 
@@ -151,6 +152,25 @@ submission = pd.DataFrame({"prediction": model.predict(x)}, index=pd.Index(val_i
 submission.to_parquet("hosted_predictions.parquet")
 print(f"  {len(submission):,} predictions written to hosted_predictions.parquet")
 
+
+# The artifact you DOWNLOAD is a bare estimator, but the artifact you UPLOAD
+# cannot be: submitting this file as-is is refused with
+#   400 "Everesteer runs one model shape: a cloudpickled callable."
+# So wrap it in a predict() callable and cloudpickle THAT. The wrapper selects
+# by name off the manifest, which is also what keeps the positional estimator
+# fed in the right column order.
+def build_predict(fitted, columns):
+    def predict(live_features, live_benchmark_models=None):
+        arr = live_features[columns].fillna(-1.0).to_numpy("float32")
+        return pd.DataFrame({"prediction": fitted.predict(arr)}, index=live_features.index)
+
+    return predict
+
+
+upload_pkl = "hosted_model_callable.pkl"
+with open(upload_pkl, "wb") as f:
+    cloudpickle.dump(build_predict(model, feature_order), f)
+
 # =====================================================================
 # 5. Submit down the lane the clock says is open. A round sent down the
 #    practice lane matches none of a round's ids and settles at $0, so
@@ -171,7 +191,7 @@ if now_cadence.get("open_window"):
     result = client.submit_event_predictions(
         MODEL_NAME,
         "hosted_predictions.parquet",
-        model_pkl=pkl_path,  # required on both lanes (store-only, never executed)
+        model_pkl=upload_pkl,  # required: a CLOUDPICKLED predict() callable
         model_pkl_python_version=pyver,
     )
 else:
@@ -179,7 +199,7 @@ else:
     result = client.submit_validation_diagnostics(
         MODEL_NAME,
         "hosted_predictions.parquet",
-        model_pkl=pkl_path,
+        model_pkl=upload_pkl,
         model_pkl_python_version=pyver,
         wait=True,
     )
