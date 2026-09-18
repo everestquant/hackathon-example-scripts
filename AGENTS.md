@@ -125,7 +125,14 @@ difference between fitting a round window and losing it. The practice lane has t
 shape as `submit_diagnostics_batch`.
 
 Hackathon uploads on either lane **require** your model pickle (`model_pkl`) alongside the
-predictions (store-only, never executed; the server rejects the upload without it).
+predictions, and **exactly one artifact shape is accepted**: a cloudpickled callable
+`predict(live_features)`, or `predict(live_features, live_benchmark_models)` to also
+receive the published live benchmark series, returning a single-column pandas DataFrame
+indexed by instrument id. Use `cloudpickle.dump`, never `pickle.dump`. A bare estimator,
+or a dict wrapping one, comes back as
+`400 "Everesteer runs one model shape: a cloudpickled callable."` The server rejects the
+upload without a pickle at all. Select features **by name** inside `predict` so the
+artifact survives a change to the served column set.
 
 Declare the interpreter that *saved* the pickle: `model_pkl_python_version="3.12"`, read from
 the process that pickled the model (`f"{sys.version_info.major}.{sys.version_info.minor}"`), not

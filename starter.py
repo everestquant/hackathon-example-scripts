@@ -21,7 +21,7 @@ It produces:
   - hackathon_predictions.parquet, id + prediction
 
 Usage:
-    pip install "everestapi>=0.3.32" lightgbm scikit-learn pandas pyarrow
+    pip install "everestapi>=0.3.32" lightgbm scikit-learn pandas pyarrow cloudpickle
     export EIQ_API_KEY=...                  # from your event onboarding
     export EIQ_BASE_URL=https://app.everesteer.ai
     python starter.py
@@ -38,9 +38,9 @@ EverestAPI) and the service-token headers ride alongside your key. Interactive
 from __future__ import annotations
 
 import os
-import pickle
 import sys
 
+import cloudpickle
 import lightgbm as lgb
 import pandas as pd
 from everestapi import EverestAPI
@@ -179,12 +179,32 @@ print(f"Predicted {len(predictions):,} rows; first id: {predictions['id'].iloc[0
 pred_path = "hackathon_predictions.parquet"
 predictions.to_parquet(pred_path, index=False)
 
+
 # =====================================================================
-# 6. Pickle the model: the event lane requires it
+# 6. Pickle the model: ONE artifact shape is accepted
 # =====================================================================
+# Everesteer runs exactly one shape: a CLOUDPICKLED CALLABLE. Pickle a
+# `predict(live_features)` function -- or `predict(live_features,
+# live_benchmark_models)` to also receive the published live benchmark
+# series -- returning a SINGLE-COLUMN pandas DataFrame indexed by
+# instrument id. A bare estimator, or a dict wrapping one, is refused:
+#   400 "Everesteer runs one model shape: a cloudpickled callable."
+# So use cloudpickle.dump, never pickle.dump.
+#
+# Select the features BY NAME inside predict. The artifact then survives a
+# change to the served column set, instead of silently mispredicting on a
+# positional array whose columns have shifted underneath it.
+def build_predict(fitted, columns):
+    def predict(live_features, live_benchmark_models=None):
+        x = live_features.reindex(columns=columns).fillna(0.0)
+        return pd.DataFrame({"prediction": fitted.predict(x)}, index=live_features.index)
+
+    return predict
+
+
 model_path = "hackathon_model.pkl"
 with open(model_path, "wb") as fh:
-    pickle.dump(model, fh)
+    cloudpickle.dump(build_predict(model, feat_cols), fh)
 print(f"Wrote {pred_path} and {model_path}")
 
 # =====================================================================

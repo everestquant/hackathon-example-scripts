@@ -19,7 +19,7 @@ event you are actually in. Call it first, and call it again before every submit.
 1. Install the SDK, plus what the starter trains with:
 
    ```bash
-   pip install "everestapi>=0.3.32" lightgbm scikit-learn pandas pyarrow
+   pip install "everestapi>=0.3.32" lightgbm scikit-learn pandas pyarrow cloudpickle
    ```
 
    `0.3.32` is the floor these examples are written against. Older pins are missing calls you
@@ -101,7 +101,7 @@ preds = predict(live)                      # your model
 client.submit_event_predictions(
     model_id,
     preds,                                 # id + prediction
-    model_pkl="model.pkl",                 # required, store-only, never executed
+    model_pkl="model.pkl",                 # required: a CLOUDPICKLED predict() callable
     model_pkl_python_version="3.12",       # the interpreter that SAVED the pickle
 )
 ```
@@ -161,8 +161,16 @@ money event: one staked model never got a valid submission and settled at exactl
 
 Two more rules that hold on **both** lanes:
 
-- **Your model pickle is required.** Pass `model_pkl=` alongside the predictions, store-only,
-  never executed. The server rejects a hackathon upload without it, on the practice board too.
+- **Your model pickle is required, and only one shape is accepted.** Pass `model_pkl=`
+  alongside the predictions; the server rejects a hackathon upload without it, on the
+  practice board too. The pickled object must be a **cloudpickled callable**
+  `predict(live_features)`, or `predict(live_features, live_benchmark_models)` to also
+  receive the published live benchmark series, returning a **single-column pandas
+  DataFrame indexed by instrument id**. Use `cloudpickle.dump`, never `pickle.dump`.
+  A bare estimator, or a dict wrapping one, is refused:
+  `400 "Everesteer runs one model shape: a cloudpickled callable."`
+  Select your features **by name** inside `predict`, so the artifact survives a change to
+  the served column set rather than silently mispredicting on a shifted positional array.
 - **Declare the interpreter that *saved* the pickle**, as `model_pkl_python_version="3.12"`,
   read from the process that pickled the model
   (`f"{sys.version_info.major}.{sys.version_info.minor}"`). Not from whatever runs your agent.
