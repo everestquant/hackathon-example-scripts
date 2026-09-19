@@ -117,8 +117,11 @@ if schema.get("primary_target_listed") is False:
 # 3. Download: train, plus whichever split is scored right now
 # =====================================================================
 # A round open means `live` is the scored split. Between rounds (and before
-# round 1 is published) `live` 404s CLEANLY: that means "no round open right
-# now", never "this split does not exist for my key".
+# round 1 is published) `live` returns 409 cadence_not_open, carrying
+# intake_fenced and a retry_after_seconds hint: that means "no round open right
+# now", never "this split does not exist for my key". download_benchmark is the
+# call that genuinely 404s for an event key; the two refuse for different
+# reasons, so do not branch on one expecting the other.
 try:
     train_path = client.download_dataset(split="train")
 except Exception as exc:  # noqa: BLE001
