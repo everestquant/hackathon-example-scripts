@@ -107,8 +107,11 @@ client.submit_event_predictions(
 ```
 
 Then the round closes, its board scores, and the next one opens. Between rounds, and before
-round 1 is published, `download_dataset(split="live")` **404s cleanly**. That means "no round
-open right now", never "this split does not exist for my key".
+round 1 is published, `download_dataset(split="live")` returns **409 `cadence_not_open`**, with
+`intake_fenced: true` and a `retry_after_seconds` hint. That means "no round open right now",
+never "this split does not exist for my key", so sleep that long and retry rather than treating
+it as a failure. (`download_benchmark` is the call that genuinely 404s for an event key. The two
+are different splits refusing for different reasons, so do not collapse them.)
 
 Three things about rounds that cost people the event:
 

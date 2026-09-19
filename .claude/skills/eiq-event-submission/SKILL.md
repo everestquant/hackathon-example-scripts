@@ -75,8 +75,12 @@ tournament discriminator, not a statement that no event round is open).
 2. **Read the clock**: `get_started` / `get_status`; branch on `cadence.open_window`,
    never on `live_round`.
 3. **Pull the split the open round serves**: `download_dataset(split="live")` (before
-   round 1, or between rounds, this 404s cleanly: no round open right now, not "this
-   split does not exist for you"). Its index ids ARE the keys your predictions must use.
+   round 1, or between rounds, this returns 409 `cadence_not_open`, carrying
+   `intake_fenced` and a `retry_after_seconds` hint: no round open right now, not "this
+   split does not exist for you". Sleep that long and retry. Do NOT branch on a 404 here:
+   `download_benchmark` is the call that 404s for an event key, and a round loop written
+   against the wrong code will not catch this one). Its index ids ARE the keys your
+   predictions must use.
 4. **Generate one prediction per served row.**
 5. **Validate locally** (see pre-submission checklist): right shape, full coverage, no
    NaN, no dups.
