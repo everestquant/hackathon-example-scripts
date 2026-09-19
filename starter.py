@@ -108,6 +108,14 @@ if not target_col:
         RuntimeError("schema declares no primary_target - refusing to guess"),
     )
 print(f"\nTarget: {target_col}   (schema advertises {len(targets)} target(s))")
+
+# The missing sentinel is a dataset fact too. `feature_encoding` declares the
+# bin count, the value range and the sentinel; read it rather than assuming -1.
+# It is absent on a tree that does not declare its encoding, which is not
+# permission to assume a default either, so fall back only as a last resort.
+encoding = schema.get("feature_encoding") or {}
+MISSING = encoding.get("missing", -1.0)
+print(f"Missing sentinel: {MISSING!r}   (from schema['feature_encoding'])")
 if schema.get("primary_target_listed") is False:
     # Expected on a dataset that publishes the graded column under an alias:
     # it is served and scored either way. Predict it, do not substitute.
@@ -157,12 +165,24 @@ print(f"Scored: {len(scored):>8,} rows   split={scored_split}  ({scored_path})")
 # NaN or as its own category, NEVER as an ordinal below the lowest real bin.
 # A NaN target means the row was uncomputable; it is never imputed, so drop
 # those rows rather than filling them.
+def features_matrix(df, cols):
+    """Bin codes as float, with the missing sentinel turned into real NaN.
+
+    LightGBM handles NaN natively as "missing". `.fillna(0.0)` does NOT do this
+    job and is worse than it looks: the served split carries no NaNs at all, so
+    the fill never fires, and every sentinel reaches the model as an ordinal
+    below the lowest real bin, which is precisely what the note above forbids.
+    """
+    x = df[cols].astype("float32")
+    return x.mask(x == MISSING)
+
+
 feat_cols = sorted(c for c in train.columns if c.startswith("feature_"))
 fit = train.dropna(subset=[target_col])
 print(f"\nFitting on {len(fit):,} labeled rows over {len(feat_cols)} features...")
 
 model = lgb.LGBMRegressor(n_estimators=400, learning_rate=0.05, num_leaves=31, verbose=-1)
-model.fit(fit[feat_cols].fillna(0.0), fit[target_col])
+model.fit(features_matrix(fit, feat_cols), fit[target_col])
 
 # =====================================================================
 # 5. Predict: the id is the PARQUET INDEX, not a column
@@ -172,7 +192,7 @@ model.fit(fit[feat_cols].fillna(0.0), fit[target_col])
 # 'eiq_559073fecf705ae5'. Submit them VERBATIM. Renumbering them 0..N-1 produces
 # a submission that matches ZERO rows.
 predictions = pd.DataFrame(
-    {"prediction": model.predict(scored[feat_cols].fillna(0.0))},
+    {"prediction": model.predict(features_matrix(scored, feat_cols))},
     index=scored.index,
 ).reset_index()
 if predictions.columns[0] != "id":
@@ -197,9 +217,14 @@ predictions.to_parquet(pred_path, index=False)
 # Select the features BY NAME inside predict. The artifact then survives a
 # change to the served column set, instead of silently mispredicting on a
 # positional array whose columns have shifted underneath it.
-def build_predict(fitted, columns):
+def build_predict(fitted, columns, missing):
+    # `missing` is closed over by value so the pickled artifact carries the
+    # sentinel with it, instead of depending on a global that only exists here.
     def predict(live_features, live_benchmark_models=None):
-        x = live_features.reindex(columns=columns).fillna(0.0)
+        x = live_features.reindex(columns=columns).astype("float32")
+        # A column the served split does not carry reindexes to real NaN, which
+        # is the honest encoding for "absent" and what LightGBM already expects.
+        x = x.mask(x == missing)
         return pd.DataFrame({"prediction": fitted.predict(x)}, index=live_features.index)
 
     return predict
@@ -207,7 +232,7 @@ def build_predict(fitted, columns):
 
 model_path = "hackathon_model.pkl"
 with open(model_path, "wb") as fh:
-    cloudpickle.dump(build_predict(model, feat_cols), fh)
+    cloudpickle.dump(build_predict(model, feat_cols, MISSING), fh)
 print(f"Wrote {pred_path} and {model_path}")
 
 # =====================================================================
