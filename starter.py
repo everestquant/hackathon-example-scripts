@@ -289,6 +289,10 @@ print(f"\nPayload OK: {len(predictions):,} unique ids, no NaNs.")
 # the platform never auto-creates one, and submitting to a name it does not know
 # comes back as a 404 telling you to create it first. Reuse the same model across
 # rounds so its board history stays on one entry.
+# create_model(name=...) is itself idempotent -- a 409 for a name you already own comes
+# back as the existing record with status="already_exists" -- so the lookup below is not
+# strictly required. It is here because reusing the SAME model across rounds is what keeps
+# your board history on one entry, and a lookup makes that explicit.
 MODEL_NAME = os.environ.get("EIQ_MODEL_ID", "hackathon-baseline")
 try:
     listed = client.get_models() or {}

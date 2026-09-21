@@ -7,9 +7,9 @@ description: >
   eiq-report-research. Reach for this whenever the request is "try/test a new idea",
   "run an experiment", "sweep configs", "compare models", "improve my Everesteer scores",
   or any open-ended "do Everesteer event research" task. It enforces scout-then-scale
-  discipline, benchmarks against the Everesteer ai_model, selects experiments on CORR
-  plus correlation-with-benchmark (the offline read on likely AIMC once a round
-  resolves), and treats per-exped stability as a diagnostic.
+  discipline, benchmarks against the event's published benchmark, selects experiments on
+  CORR plus correlation-with-benchmark (the offline read on AIMC), and treats per-exped
+  stability as a diagnostic.
 ---
 
 # Everesteer Research Orchestrator
@@ -52,10 +52,14 @@ Pull the current state before committing compute. A few MCP calls:
 - `get_started` / `get_status`: where you are in the event's cadence
   (`cadence.open_window`, `phase_ends_at`, `intake_fenced`), and your remaining
   `uploads_remaining`.
-- `get_universe` + `get_features`: which chains/clusters and which `feature_<theme>_<n>`
-  columns exist this round. Features are encoded into integer bins whose count and
-  missing sentinel the schema declares (`feature_encoding`);
-  do not try to attach economic meaning.
+- `get_dataset_schema` (and `get_dataset_schema(verbose=True)` for per-set membership):
+  which feature columns exist. Feature names are **opaque labels with no decodable
+  structure**, so read real ones out of the schema or the parquet rather than matching a
+  pattern, and don't try to attach economic meaning. Values are integer bins whose count
+  and missing sentinel the schema declares (`feature_encoding`). Note `get_features`
+  answers a hackathon key with `403 scope_mismatch` and `get_universe` returns an empty
+  instrument list: this panel has no instrument identity and no cluster column, so time
+  is the only axis you can break results down by.
 - `get_dataset_schema`: confirm the graded target column (`primary_target`) and
   the split layout.
 - `get_models` + `get_diagnostics_leaderboard` + `get_diagnostics_standings`: what you
@@ -111,9 +115,11 @@ Execute round one exactly as the design specified.
   tool's `dry_run=true` previews cost before you launch (the Python client's `train()`
   has no `dry_run` parameter). Poll with `get_job_status`; pull artifacts with
   `get_model_download_url`.
-- Score every config the same way: download the benchmark (`download_benchmark` /
-  `get_benchmarks`) and evaluate predictions against the Everesteer **`ai_model`**. Compute
-  CORR, correlation-with-benchmark, and (where rounds have resolved) AIMC, and use
+- Score every config the same way: download the benchmark with
+  `download_benchmark("futures", "train")` and evaluate predictions against it, naming it
+  by the column you actually find in that frame. (`get_benchmarks` is a tournament read
+  and answers a hackathon key with an empty list.) Compute CORR,
+  correlation-with-benchmark and the offline AIMC proxy, and use
   `run_validation_diagnostics` for a sanity pass.
 - Rank candidates on the **round score**, not on any single term. Which terms carry
   weight, and how much, is a live platform setting. Call `explain_scoring` and rank on
@@ -184,29 +190,37 @@ non-overfit CORR). Then invoke
   have changed. Rank
   configs by CORR first; per-exped stability is the robustness check;
   correlation-with-benchmark, next, is the differentiation guard, not the objective.
-- **AIMC is the differentiation term.** **AIMC** (AI Model Contribution) is your unique
-  signal beyond the *live* stake-weighted ai-model consensus, measured once a round
-  resolves. You cannot compute it offline. The best available offline signal is
-  **correlation-with-benchmark** (corr of your predictions vs the static `ai_model`
-  benchmark you downloaded): lower means more differentiated, and more likely to earn
-  AIMC once the round resolves. Never pay CORR to buy differentiation, and never invent
-  a precise offline AIMC number.
-- **Payout is a weighted blend of CORR, AIMC, and NCORR. Call `explain_scoring` for the
-  live weights and cap.** Don't hardcode an ordering; it has changed before. Uniqueness
-  pays more than raw accuracy. Keep the search pointed at differentiated alpha, not at
-  chasing CORR. That score is then scaled by a per-round **payout factor**, frozen at the
-  round's stake lock: 1 below a fixed total-stake threshold, shrinking above it, so it can
-  differ round to round.
+- **AIMC is the differentiation term, and here you can approximate it.** AIMC is your
+  contribution over a **reference series**, and which series is a per-product setting:
+  `explain_scoring`'s `metrics.aimc` is the authority. On a hackathon event it reports the
+  **event's own benchmark predictions**, not the crowd consensus the live tournament uses.
+  Since that benchmark is downloadable over `train`, the offline proxy is a real one:
+  residualize predictions against the benchmark per exped, then correlate the residual
+  with the target (`contribution()` in
+  `notebooks/03_neutralization_and_ensembling.ipynb`). Track
+  **correlation-with-benchmark** alongside it as the cheap guard: lower means more
+  differentiated. Never pay real CORR to buy differentiation, and label the proxy as a
+  proxy - the server's number arrives after you submit.
+- **The round score is a weighted blend of CORR, AIMC and NCORR, bounded per round. Call
+  `explain_scoring` for the live weights.** Don't hardcode an ordering; it has changed
+  before. Uniqueness pays more than raw accuracy, so keep the search pointed at
+  differentiated alpha rather than at chasing CORR. On a money event the score is then
+  mapped to a payout through a bounded function, `A * tanh(payout_factor * score / A)`;
+  read `payout_factor` and `stake_return_amplitude` from `get_event_staking` and pass them
+  to `everestapi.scoring.payout` rather than estimating proportionally.
 - **Scout before you scale.** Always a downsampled-exped round first; full data only for
   survivors.
 - **Iterate in rounds and stop at a plateau.** ~4-5 configs per round; two flat rounds
   means the idea is spent.
-- **Benchmark against `ai_model` every time.** It is the comparison baseline;
-  residualizing/neutralizing against it lowers correlation-with-benchmark, which is what
-  drives AIMC once a round resolves. No correlation-with-benchmark or AIMC number is
-  meaningful without the downloaded benchmark to compare against.
-- **Respect the CV.** Exped-purged with embargo. The 20-day target needs a wide enough
-  embargo to avoid look-ahead, let the design skill set it; never substitute plain k-fold.
+- **Benchmark against the published benchmark every time.** It is the comparison
+  baseline, and on a hackathon event it is also what AIMC is measured against, so
+  residualizing or neutralizing against it raises AIMC directly. No
+  correlation-with-benchmark or AIMC-proxy number is meaningful without the downloaded
+  benchmark to compare against.
+- **Respect the CV.** Exped-purged with embargo. The target's horizon is a dataset fact
+  and this dataset does not publish it - not in the target name, not in any schema field -
+  so the embargo is chosen generously rather than matched to a known number. Let the
+  design skill set it; never substitute plain k-fold.
 - **Compute is metered.** Check `get_compute_credits` up front and let the budget bound
   the number of rounds.
 - **Real data only.** Everything comes from the downloaded Everesteer datasets and the SDK/MCP,
@@ -214,7 +228,7 @@ non-overfit CORR). Then invoke
 
 ## Worked example
 
-> User: "Try training on benchmark-residualized targets, I think we're just echoing the ai_model."
+> User: "Try training on benchmark-residualized targets, I think we're just echoing the benchmark."
 
 1. **Orient**: `get_diagnostics_standings` + the round board show solid CORR,
    correlation-with-benchmark near 1.0. Bottleneck is differentiation, exactly the
