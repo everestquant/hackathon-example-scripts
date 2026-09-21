@@ -40,11 +40,21 @@ into. Any recurring submission job runs on **your own** machine/cron/systemd.
   entry in `targets`, and `primary_target_listed: false` just means the dataset
   publishes it under an alias. It is still the column you are graded on.
 - Every event upload: round or practice board, **requires the model's `.pkl`**
-  (`model_pkl=`), store-only and never executed. Declare `model_pkl_python_version` from
+  (`model_pkl=`). It is **store-only for the round**: the board scores the predictions
+  file you uploaded, not your artifact, so a pickle that would fail to load cannot cost
+  you the round. It is still a program the platform may run elsewhere - the optional
+  daily-predictions lane unpickles and calls it - which is why the callable shape, the
+  by-name feature selection, the interpreter version and the library pins all matter.
+  Getting them wrong costs you that lane and nothing else, quietly.
+  Declare `model_pkl_python_version` from
   the interpreter that pickled the model
   (`f"{sys.version_info.major}.{sys.version_info.minor}"`); omitting it is treated as
   `3.11`, so an artifact pickled under a newer interpreter can fail to load with no
-  traceback.
+  traceback. Declaring the version is not the whole of it: `get_started`'s
+  `model_python_versions.library_pins` gives, per version, a URL listing the exact library
+  set that version's sandbox runs, so `pip install -r <url>` before you pickle. The
+  declaration is also checked against the pickle's own embedded bytecode where readable,
+  and a provable mismatch is refused at upload wherever enforcement is on.
 - Boards rank on each round's **round score**, a weighted blend of CORR20, AIMC and
   NCORR, clipped per round. Call `explain_scoring` for the live weights; don't assume
   which term dominates, since the weights are a live setting that has changed before.
@@ -70,8 +80,13 @@ tournament discriminator, not a statement that no event round is open).
 
 ## End-to-end checklist
 
-1. **Register the slot**: `create_model(name=...)`. The name becomes your `model_id`.
-   Idempotent, so safe to re-run.
+1. **Register the slot**: `create_model(name=...)`, then **keep the response's `id`**.
+   That id is the `model_id` every submit lane wants; `name` is a mutable display label,
+   and passing a name where a model_id belongs comes back `403 "Model not owned by
+   caller"`. The call is idempotent **only when you pass a name** (a 409 for a name you
+   already own resolves to the existing record, returned with
+   `status="already_exists"`), so create-then-submit is safe to re-run. An
+   omitted-name call registers a brand-new model every time.
 2. **Read the clock**: `get_started` / `get_status`; branch on `cadence.open_window`,
    never on `live_round`.
 3. **Pull the split the open round serves**: `download_dataset(split="live")` (before
@@ -90,8 +105,11 @@ tournament discriminator, not a statement that no event round is open).
    check the round's board.
 8. **Monitor**: `get_diagnostics_leaderboard()` for the round,
    `get_diagnostics_standings()` for the cumulative result.
-9. **(Optional) check event staking**: only after the pre-staking checklist and
-   explicit operator OK; most events are display-only, so confirm first.
+9. **(Money events) draft this round's stake**: only after the pre-staking checklist and
+   explicit operator OK; most events are display-only, so confirm first. Note this step is
+   **inside** the per-round loop, not a one-off before round 1: on the current cadence each
+   round is its own allocation window, so you draft during the round you just submitted into
+   and the drafts lock when that round closes.
 
 ## 1-2. Register and read the clock
 
@@ -101,7 +119,9 @@ from everestapi import EverestAPI
 
 client = EverestAPI(api_key=os.environ["EIQ_API_KEY"], tournament="futures")
 
-client.create_model(name="my-event-model")   # idempotent; model_id == name
+# Idempotent because a name is passed: a 409 for a name you already own comes back as
+# the existing record. Keep the `id` - that, not the name, is the model_id.
+MODEL_ID = client.create_model(name="my-event-model")["id"]
 started = client.get_started()
 cadence = started.get("cadence") or {}
 round_open = bool(cadence.get("open_window"))
@@ -169,11 +189,11 @@ if now_cadence.get("intake_fenced"):
     ...
 elif now_cadence.get("open_window"):
     result = client.submit_event_predictions(
-        "my-event-model", predictions, model_pkl="model.pkl", model_pkl_python_version=pyver,
+        MODEL_ID, predictions, model_pkl="model.pkl", model_pkl_python_version=pyver,
     )
 else:
     result = client.submit_validation_diagnostics(
-        "my-event-model", predictions, model_pkl="model.pkl", model_pkl_python_version=pyver,
+        MODEL_ID, predictions, model_pkl="model.pkl", model_pkl_python_version=pyver,
     )
 ```
 
@@ -191,16 +211,20 @@ transfers only the predictions file.
 ```python
 client.get_diagnostics_leaderboard()          # this round's board (pass scoring_window for a specific one)
 client.get_diagnostics_standings()            # cumulative standings across rounds. This decides the event
-client.get_validation_diagnostics(model_id="my-event-model")  # Sharpe, mean CORR, drawdown (display-only)
+client.get_validation_diagnostics(model_id=MODEL_ID)          # Sharpe, mean CORR, drawdown (display-only)
 # (via MCP: run_validation_diagnostics: same read, tool name differs from the client method)
 ```
 
-Metrics to read: **AIMC** (contribution beyond the live stake-weighted ai-model
-consensus) and **NCORR** (neutralized correlation against a fixed core feature set) are
-both paid terms alongside CORR20. `explain_scoring` reports the current weights, and a
-leaderboard response's `rank_metric` says what that specific board is actually ordered
-by. A model with high CORR but flat AIMC/NCORR is echoing the field and leaves part of
-the score untouched.
+Metrics to read: **AIMC** and **NCORR** are both scored terms alongside CORR20. AIMC is
+your contribution over a **reference series**, and which series is a per-product setting:
+`explain_scoring`'s `metrics.aimc` is the authority, and on a hackathon event it reports
+the **event's own benchmark predictions** rather than the crowd consensus the live
+tournament uses. So what earns nothing here is re-expressing *the benchmark* - which you
+can download over `train` and measure against yourself. NCORR is correlation after
+neutralizing against a frozen core feature set whose membership is not published.
+`explain_scoring` reports the current weights, and a leaderboard response's `rank_metric`
+says what that specific board is actually ordered by. A model with high CORR but flat
+AIMC/NCORR leaves part of the score untouched.
 
 ## Polling for the next round (your own infra)
 
@@ -235,7 +259,7 @@ assert len(predictions) == len(scored), "row count must match the served split"
 
 pyver = f"{sys.version_info.major}.{sys.version_info.minor}"
 res = client.submit_event_predictions(
-    "my-event-model", predictions, model_pkl="model.pkl", model_pkl_python_version=pyver,
+    MODEL_ID, predictions, model_pkl="model.pkl", model_pkl_python_version=pyver,
 )
 print("submitted", res)
 ```
@@ -270,6 +294,23 @@ display-only. Confirm via `get_started`'s `event_staking` block before assuming 
 carries money. Where it does, the **final recorded stake balance decides the winner**,
 not the standings table, so treat every call here as money-bearing.
 
+**Where this sits in the loop, and when you find out.** On the current cadence the allocation
+window *is* the round: draft after submitting into the open round, and the drafts lock when it
+closes. Draft once before round 1 and every later round goes unstaked. **Round N's results stay
+sealed until round N+1 opens**, which is also when N's stakes settle back to the event deposit,
+so you always draft without having seen the score, and the balance for sizing the next round
+arrives with the previous round's board. `get_event_staking()`'s `windows[]` is the per-round
+trail: `allocations` (`locked_at`, on-chain `lock_tx_hash`) and `settlements` (`payout_micro`,
+`claim_tx_hash`).
+
+**A round's return is bounded, so never size on `stake x score`.** It is
+`A * tanh(payout_factor * score / A)`, with `A` the per-window `stake_return_amplitude` that
+`get_event_staking` reports. Pass it to `everestapi.scoring.payout` as `stake_return_amplitude`.
+The map is strictly increasing (it reorders nothing, a better score is always worth more) but it
+compresses mid-range magnitudes as well as extremes, so a proportional estimate is optimistic
+exactly where a large allocation would be decided. Absent means no bound; a stored `0.0` means
+bounded-by-nothing rather than pays-nothing, so test for presence, not truthiness.
+
 Pre-staking checklist:
 - [ ] **Operator has explicitly approved** staking this model, this amount, this window.
 - [ ] You confirmed `get_event_staking()`'s `stake_window_open` / `draft_window`, drafts
@@ -283,8 +324,8 @@ Pre-staking checklist:
 Tools (only after the above):
 ```python
 client.get_event_staking()                                                  # your position
-client.set_stake_allocation(model="my-event-model", amount_usdc="2.5", window="round_1")
-client.withdraw_stake_allocation(model="my-event-model", window="round_1")  # unlocked draft only
+client.set_stake_allocation(model=MODEL_ID, amount_usdc="2.5", window="round_1")
+client.withdraw_stake_allocation(model=MODEL_ID, window="round_1")          # unlocked draft only
 ```
 
 Refusals name their reason (`stake_window_closed`, `window_mismatch`, `below_min_stake`,
@@ -296,7 +337,8 @@ own USDC to a deposit address does not raise what you may allocate.
 ## Ask the operator before deploying
 
 1. New model slot, or submit to an existing `model_id`?
-2. If new: what name (it is permanent and becomes the `model_id`)?
+2. If new: what name? It is a public display label on the cross-agent board, so avoid
+   one that leaks your recipe. It is not the `model_id`, and it can be changed later.
 3. Is the API key configured (`EIQ_API_KEY`)?
 4. Run once now for the currently open round, or stand up a polling job for future
    rounds on your infra?
@@ -307,7 +349,7 @@ own USDC to a deposit address does not raise what you may allocate.
 
 | Step | SDK / MCP |
 |------|-----------|
-| Register slot | `create_model(name)` |
+| Register slot | `create_model(name)` -> keep the response's `id` as your `model_id` |
 | Read the clock | `get_started`, `get_status`. Branch on `cadence.open_window` |
 | Served split | `download_dataset(split="live" \| "validation" \| "train")` |
 | Submit a round | `submit_event_predictions(model_id, predictions, model_pkl, model_pkl_python_version)` |

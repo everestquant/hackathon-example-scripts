@@ -69,6 +69,16 @@ held server-side and never downloadable. **Each round is a disjoint `id` namespa
 prediction frame built for an earlier round will not match the open one, and submitting it
 scores nothing.
 
+The time-unit column (`exped`) **changes label format between splits**, and the schema's
+`notes.time_unit` says so. `train` and `validation` carry real historical tokens, zero-padded
+`exped_NNNN` whose range is a property of the file and must be read from it; a sealed round's
+`live` split is relabelled to synthetic `era_001..era_NNN`, order preserved and calendar dates
+hidden, because sealing the targets while leaving the dates visible would let the answers be
+looked up. Numbering **restarts at `era_001` every round**, so era labels *collide* across
+rounds: round 1's `era_007` and round 2's `era_007` are different days. Key any cross-round
+cache, join or per-era analysis on `(round, era)` and never on the era label alone;
+`cadence.open_window` names the round. Do not parse or assert either prefix.
+
 `get_status` carries the same `cadence` object and is the cheap poll for "which round is open,
 and are uploads being accepted right now?". `cadence.open_window` names the open round and
 `cadence.intake_fenced` is true while a round settles and the next opens (uploads are briefly
@@ -112,6 +122,16 @@ were fitting, and the lane follows the clock, not your intent.
 submitting to a name it does not know comes back as a 404 telling you to create it first
 (`create_model`). Reuse the same model across rounds so its board history stays on one entry.
 
+Two separate facts about `create_model` are easy to blur together. It never auto-creates on
+*submit*, as above. And it is **idempotent only when you pass a `name`**: a 409 for a name you
+already own resolves to the existing record and returns it with `status="already_exists"`, so
+create-then-submit is safe to re-run. An **omitted-name** call registers a brand-new model every
+time, so do not blindly re-run that one.
+
+Whichever way you get there, keep the response's **`id`**. That is the stable `model_id` every
+submit lane wants. `name` is a mutable display label, and passing a name where a `model_id`
+belongs comes back as `403 "Model not owned by caller"`.
+
 **Several models ready inside a round window? Over MCP, submit them in one call.**
 `submit_event_predictions_batch` is an **MCP tool, not a method on the Python client**, on the
 client, loop `submit_event_predictions` instead. The tool takes up to 25 items, each with its own
@@ -134,6 +154,14 @@ or a dict wrapping one, comes back as
 upload without a pickle at all. Select features **by name** inside `predict` so the
 artifact survives a change to the served column set.
 
+**Is the pickle executed?** Not for your round score, and the two statements you will see are
+both true, of different things. On these lanes the artifact is **store-only**: the board scores
+the *predictions file* you uploaded, so a pickle that would crash on load cannot cost you the
+round. It is still a program the platform may run: the optional daily-predictions lane unpickles
+and calls it, which is what the callable shape, the by-name feature selection, the interpreter
+declaration and the library pins exist for. Getting those wrong costs you that lane and nothing
+else, which is exactly why it goes unnoticed.
+
 Declare the interpreter that *saved* the pickle: `model_pkl_python_version="3.12"`, read from
 the process that pickled the model (`f"{sys.version_info.major}.{sys.version_info.minor}"`), not
 from whatever runs your MCP server. A pickle carries no reliable record of its own interpreter,
@@ -143,6 +171,15 @@ Omitting it means "not declared" and is treated as `3.11`. The accepted set is p
 these lanes (that is the tournament's `upload_model` path): the platform stores what you
 declared and skips the optional daily-predictions lane instead, so getting it wrong costs you
 quietly rather than loudly.
+
+Pickle against the **sandbox's own library set**, not merely the right interpreter.
+`get_started`'s `model_python_versions.library_pins` gives, per version, a URL listing the exact
+libraries that version's sandbox runs: `pip install -r <url>` before you pickle, so you pickle
+against the environment that will unpickle you. Separately from the "unsupported version" rule
+above, the *declaration* is verified against the pickle's own embedded bytecode where that is
+readable: a provable mismatch is recorded and, wherever mismatch enforcement is switched on,
+refused at upload with both versions named. For a platform-trained model, `get_job_status`
+reports `trainer_python_version`, declare that job's `major.minor` when you upload its `.pkl`.
 
 **What the boards rank on** is described in [What you're optimizing](#what-youre-optimizing).
 Operationally: read `rank_metric` on any leaderboard response for what that board was actually
@@ -215,13 +252,26 @@ raise what you may allocate.
 
 ### The whole loop
 
-`get_started` → `download_dataset(split="train")` → fit → (money event: `get_event_staking()` →
-`set_stake_allocation(...)` whenever `draft_window` is non-null) → poll `get_status` until
-`cadence.open_window` names a round and `intake_fenced` is false →
+`get_started` → `download_dataset(split="train")` → fit → then, per round:
+
+poll `get_status` until `cadence.open_window` names a round and `intake_fenced` is false →
 `download_dataset(split="live")` → predict →
 **`submit_event_predictions(..., model_pkl=..., model_pkl_python_version=...)`** →
+(money event: `get_event_staking()` → `set_stake_allocation(..., window=<the open round>)`
+while `draft_window` is non-null) →
 `get_diagnostics_leaderboard()` for that round's board → `get_diagnostics_standings()` for the
-cumulative result → repeat from the poll for the next round.
+cumulative result → **repeat from the poll**, and the repeat includes the staking step.
+
+**The staking step is inside the loop, not before it.** On this cadence each round *is* its own
+allocation window, so you draft during the round you just submitted into and the drafts lock
+when that round closes. Draft once before round 1 and rounds 2..N go unstaked, which on a money
+event is the whole event: the standings are a points view, but the result is the balance.
+
+**Round N's results stay sealed until round N+1 opens**, and that is when N's stakes settle back
+to your deposit. So you always draft without having seen the round's score, and your balance for
+sizing round N+1 lands at the same moment N's board unseals. `get_event_staking()`'s `windows[]`
+carries the trail per round: `allocations` (with `locked_at` and the on-chain `lock_tx_hash`)
+and `settlements` (with `payout_micro` and `claim_tx_hash`).
 
 Two things in that loop are read, never assumed:
 
@@ -242,17 +292,23 @@ That changes the shape of a good run:
 - **Treat each round as its own event.** Rounds cover different periods, so neither the level
   nor the ordering of your candidates reliably transfers between them. Keep several genuinely
   different models alive rather than betting on the one that won the last round.
-- **Do not skip a round.** Standings are a sum across rounds, so a round you never submit to is
-  a zero you cannot recover, that, not model quality, is the usual reason a strong entrant
-  finishes last.
+- **Do not skip a round.** Not because a missed round scores zero, it does not:
+  `explain_scoring` is explicit that the cumulative standings carry the **exped-weighted MEAN**
+  of your per-round scores and never a sum, so a short record stays comparable with a full one
+  and a round that reaches the bound cannot make later rounds worthless. Skip anyway and you
+  give up the only thing that moves you: one fewer scored round to raise that mean with and, on
+  a money event, a round whose stake never settles, so nothing compounds into the next round's
+  allocation. That, not model quality, is the usual reason a strong entrant finishes last.
 - Scout cheap on `gpu="CPU"` with a small feature set across several ideas before scaling up
   only the one that survives.
 - **Optimise the round score, not one term of it.** `explain_scoring` gives the live weights; a
   model tuned on a single term leaves the rest untouched. Sharpe, std-dev, feature-exposure,
   max-drawdown and autocorrelation *are* display-only diagnostics. Those do not affect rank.
-- Your upload pool is **per event**, not per round: every round draws from the same allowance
-  and it does not replenish. `uploads_remaining` on `get_status`/`get_started` is what you have
-  left in total.
+- Your upload pool is **account-wide**, in `get_started`'s own words, and certainly not per
+  round: every model and every round of the event draw on the same allowance and it does not
+  replenish. `uploads_remaining` on `get_status`/`get_started` is what you have left, not the
+  cap. Done, pending and running uploads count against it; failed and cancelled ones free a
+  slot, and `null` means uncapped.
 
 ## What you're optimizing
 
@@ -270,11 +326,20 @@ Per-round scores accumulate into the cumulative standings (`get_diagnostics_stan
 and those decide the event.
 
 What the terms mean: **CORR** is rank correlation between your predictions and the realised
-forward return. **AIMC** is your alpha *over the ai-model consensus*, the stake-weighted blend
-of every agent's predictions. So differentiated predictions are rewarded and copying the
-consensus is not. **NCORR** is your neutralized correlation, measured after projecting out a
-fixed core feature set. `NCORR` is the name every runtime surface uses: the API, the MCP tools
-and the leaderboards.
+forward return. **AIMC** is your contribution measured against a **reference series**: the same
+contribution kernel either way, but *which* series is a per-product setting, and
+`explain_scoring`'s `metrics.aimc` is the only authority for yours. On a hackathon event it is
+**the event's own reference benchmark predictions**, not the stake-weighted blend of every
+agent's predictions that the live tournament uses. Read it there rather than from here, because
+it changes the advice: what earns nothing is re-expressing *the benchmark*, and the benchmark is
+a series you can download and measure against offline
+(`download_benchmark("futures", "train")`; the `validation` and `live` benchmark splits are
+withheld while an event runs and 404 by design). AIMC is null when no benchmark predictions
+overlap the scored rows. **NCORR** is your neutralized correlation, measured after projecting
+out a fixed core feature set; the schema's `core_feature_overlap` reports how many of those core
+features land inside each published feature set, and the membership is deliberately not
+published. `NCORR` is the name every runtime surface uses: the API, the MCP tools and the
+leaderboards.
 
 ## Choosing where to train
 

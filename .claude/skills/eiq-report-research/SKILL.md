@@ -1,6 +1,6 @@
 ---
 name: eiq-report-research
-description: Turn a finished Everesteer hackathon-event (futures dataset) experiment run into a durable, scientific write-up in experiment.md (abstract, motivation, method, results table, decisions, stopping rationale, findings, next steps) and generate/link the standard cumulative-CORR plot. Use after running Everesteer event experiments, or when asked to "write up the results", "produce a full report", "update experiment.md", or "generate the standard plot".
+description: Turn a finished Everesteer hackathon-event experiment run into a durable, scientific write-up in experiment.md (abstract, motivation, method, results table, decisions, stopping rationale, findings, next steps) and generate/link the standard cumulative-CORR plot. Use after running Everesteer event experiments, or when asked to "write up the results", "produce a full report", "update experiment.md", or "generate the standard plot".
 ---
 
 # Everesteer Report Research
@@ -13,31 +13,45 @@ You own everything here: the `experiments/` folder, the `everestapi` SDK, the Ev
 tools, and the plotting/scoring helpers shipped in this example-scripts repo. There is no
 internal platform repo to call into.
 
-## Ground truth (Everesteer event: futures dataset)
+## Ground truth (Everesteer hackathon event)
 
-- The event's rounds run on the futures dataset. Time unit is the **exped**.
-- Primary target: the column `get_dataset_schema` reports as `primary_target`. Consensus benchmark: `ai_model`.
-- Payout: a weighted blend of CORR, AIMC, and NCORR, capped per round. Call
-  `explain_scoring` for the live weights and cap; don't hardcode which term dominates, it
-  has changed before. Uniqueness pays more than raw accuracy, say so in the write-up. That
-  score is then scaled by a per-round **payout factor**, frozen at the round's stake lock:
-  1 below a fixed total-stake threshold, shrinking above it, so it can differ round to round.
+- Time unit is the **exped**. The panel is obfuscated: rows carry no instrument identity
+  and there is **no cluster or sector column**, so time is the only axis a breakdown can
+  use. `get_features` 403s a hackathon key and `get_universe` comes back empty; read
+  columns from `get_dataset_schema`.
+- Primary target: the column `get_dataset_schema` reports as `primary_target`. Benchmark:
+  whatever `download_benchmark("futures", "train")` serves, named by the column you find
+  in that frame rather than assumed.
+- Round score: a weighted blend of CORR, AIMC and NCORR, bounded per round. Call
+  `explain_scoring` for the live weights; don't hardcode which term dominates, it has
+  changed before. Uniqueness pays more than raw accuracy, say so in the write-up. On a
+  money event the score is then mapped to a payout through a **bounded** function,
+  `A * tanh(payout_factor * score / A)`; `get_event_staking` reports the `payout_factor`
+  and `stake_return_amplitude` each round froze, and `everestapi.scoring.payout` takes both.
+  Cumulative standings carry the **exped-weighted mean** of per-round scores, never a sum.
 - Always report these:
   - **CORR**: mean per-exped rank correlation of your predictions vs the target; also a
-    payout component (see `explain_scoring` for the live weights). This is the primary
+    scored term (see `explain_scoring` for the live weights). This is the primary
     *experiment-selection* metric, since it's the one number you can compute precisely
     offline every round. Report it **two ways**: full-period CORR and a recent-window
     CORR (most recent ~20-40 expeds).
-  - **AIMC**, AI Model Contribution: contribution beyond the live stake-weighted
-    ai-model consensus; a paid component, but only measurable once a round resolves.
-    Report it where rounds have resolved; do not fabricate an offline substitute.
-  - **NCORR**, Neutralized Correlation: the other paid futures term, alongside CORR and
-    AIMC. Report it where rounds have resolved.
-  - **correlation-with-benchmark**: corr of your preds with `ai_model`. This is the
-    tell for the "high CORR, high correlation-with-benchmark" trap: a model that just
-    re-derives the consensus and is unlikely to earn AIMC once resolved.
+  - **AIMC**: your contribution over a reference series. On a hackathon event
+    `explain_scoring` reports that reference as **the event's own benchmark predictions**,
+    not a crowd consensus, and the benchmark is downloadable over `train`. So unlike the
+    tournament case you can report a genuine offline proxy: residualize predictions
+    against the benchmark per exped, correlate the residual with the target (the
+    `contribution()` helper in `notebooks/03_neutralization_and_ensembling.ipynb`). Label
+    it as the proxy it is, and report the server's number where rounds have resolved.
+  - **NCORR**: correlation after neutralizing against a frozen core feature set whose
+    membership is not published. Report it where rounds have resolved; note that the
+    platform uses a spectrally-anchored ridge, so a local OLS residualization will not
+    reproduce it.
+  - **correlation-with-benchmark**: corr of your preds with the benchmark series. This is
+    the tell for the "high CORR, high correlation-with-benchmark" trap: a model that just
+    re-expresses the benchmark and will earn little AIMC.
   - **stability**: per-exped sharpe (mean/std of the per-exped score) and max drawdown
-    of the cumulative score.
+    of the cumulative score. Display-only on the board, but the right selection diagnostic
+    offline.
 
 ## Step 1: Inventory what actually ran
 
@@ -92,23 +106,25 @@ Use this template. Keep prose tight; every section earns its place.
 **Date:** YYYY-MM-DD
 **Event dataset:** futures
 **Target:** <the schema's primary_target>
-**Selection metric:** CORR, with correlation-with-benchmark as the differentiation guard  ·  **Payout:** weighted CORR+AIMC+NCORR blend (see `explain_scoring` for live weights and cap)
+**Selection metric:** CORR, with correlation-with-benchmark as the differentiation guard  ·  **Round score:** weighted CORR+AIMC+NCORR blend, bounded per round (see `explain_scoring` for live weights)
 
 ## Abstract
 Two to four sentences: what was tested, the headline result, and the decision
 (stake / not yet). Lead with CORR and correlation-with-benchmark (AIMC alongside where resolved).
 
 ## Motivation
-Why this idea should produce alpha *beyond the consensus*. I.e. why it should lower
-correlation-with-benchmark (and so raise AIMC, the payout driver), not just raise CORR.
-State the hypothesis you set out to test.
+Why this idea should produce alpha *beyond the reference series*. I.e. why it should lower
+correlation-with-benchmark (and so raise AIMC), not just raise CORR. State the hypothesis
+you set out to test.
 
 ## Method
 - Data: train / validation / live exped ranges actually used.
 - Feature set and any transforms.
 - Model type(s) and key hyperparameters.
-- Cross-validation: scheme + embargo (a longer-horizon target needs a wider exped
-  embargo; the horizon is a dataset fact, not something to read off the target name).
+- Cross-validation: scheme + embargo. The horizon is a dataset fact and this dataset does
+  not publish it - not in the target name, not in any schema field - so state the embargo
+  you chose and that it was chosen wide on purpose, rather than implying you matched a
+  known horizon.
 - How each round differed from the previous (if staged).
 
 ## Experiments run
@@ -122,24 +138,27 @@ One short subsection per config that *actually ran*. Name the artifacts
 | ...   | ...   | ...         | ...            | ...               | ...              | ...              | ...    | ...          | best / kept / dropped |
 
 `payout (est)` is the weighted CORR+AIMC+NCORR blend, before the payout factor and (on
-staked events) the per-round return bound. `explain_scoring` reads all of it live, so
-don't hardcode an ordering or a cap. Call out any high-CORR / high-corr_w/_benchmark rows
-explicitly. Accuracy that differentiates nothing scores well offline and still pays
-badly against the crowd once AIMC resolves.
+staked events) the per-round return bound. `explain_scoring` reads the weights and the
+bound live, so don't hardcode an ordering. Call out any high-CORR / high-corr_w/_benchmark
+rows explicitly. Accuracy that differentiates nothing scores well offline and still pays
+badly once AIMC resolves.
 
 ### Round-by-round
-For each round: what changed, the best result, and whether it beat the prior best.
+For each round: what changed, the best result, and whether it beat the prior best. Keep
+your experiment rounds and the event's sealed scoring rounds clearly distinct.
 
-### Per-cluster breakdown
-Does the edge generalize across the futures clusters, or is it concentrated in one or two?
-A cluster-concentrated edge is fragile, say so.
+### Robustness over time
+There is no cluster or sector axis on this panel, so the fragility check is temporal: split
+the holdout in half and report whether the edge survives in both. An edge confined to one
+stretch of expeds is a regime artifact, say so. Per-exped CORR spread and the worst run of
+negative expeds belong here too.
 
 ## Standard plot
-![cumulative CORR and correlation-with-benchmark vs ai_model](plots/cumulative_corr.png)
-Cumulative CORR of the best model, and its rolling correlation with the `ai_model`
+![cumulative CORR and correlation-with-benchmark](plots/cumulative_corr.png)
+Cumulative CORR of the best model, and its rolling correlation with the published
 benchmark, over expeds. Interpret it: is CORR accumulating steadily, and is
-correlation-with-benchmark trending down (more differentiated) or up (converging on
-consensus)?
+correlation-with-benchmark trending down (more differentiated) or up (converging on the
+benchmark)?
 
 ## Decisions
 The choices you made and why (feature set, model family, sweep picks, per-exped vs
@@ -152,12 +171,12 @@ correlation-with-benchmark no longer improving, diminishing payout per round, or
 confirmatory full-data run after a scout phase.
 
 ## Findings
-What worked, what didn't, what the plot and per-cluster view actually show. Honest
-about negative results.
+What worked, what didn't, what the plot and the over-time robustness view actually show.
+Honest about negative results.
 
 ## What we'd stake / why (or not yet)
 A clear call in payout terms: would you stake this model, and why, or what specifically
-must improve first (e.g. cluster breadth, benchmark de-correlation, resolved-round AIMC
+must improve first (e.g. temporal breadth, benchmark de-correlation, resolved-round AIMC
 once available).
 
 ## Next experiments
@@ -167,7 +186,7 @@ once available).
 ## Step 4: Generate the standard plot
 
 The standard Everesteer plot is **cumulative CORR of the best model, plus its rolling
-correlation with the `ai_model` benchmark, over expeds**, built from the run's
+correlation with the published benchmark, over expeds**, built from the run's
 out-of-sample predictions.
 
 If the example-scripts repo ships a plotting helper, use it, e.g.:
@@ -175,7 +194,7 @@ If the example-scripts repo ships a plotting helper, use it, e.g.:
 ```bash
 python plot_experiment.py \
   --predictions experiments/<name>/predictions/<best_model>.parquet \
-  --benchmark ai_model \
+  --benchmark benchmark_futures_train.parquet \
   --out experiments/<name>/plots/cumulative_corr.png
 ```
 
@@ -194,10 +213,10 @@ NAVY, TEAL, CORAL = "#09142F", "#007B63", "#EC9A5F"
 fig, ax = plt.subplots(figsize=(12, 5))
 ax.plot(expeds, corr_cum, color=TEAL, label="Cumulative CORR")
 ax.plot(expeds, bench_corr_roll, color=CORAL, label="Rolling correlation-with-benchmark")
-ax.plot(expeds, bench_cum, color=NAVY, linestyle="--", label="ai_model benchmark")
+ax.plot(expeds, bench_cum, color=NAVY, linestyle="--", label="published benchmark")
 ax.axhline(0, color=NAVY, linewidth=0.5)
 ax.set_xlabel("exped"); ax.set_ylabel("cumulative score / correlation")
-ax.set_title("Best model vs ai_model over expeds")
+ax.set_title("Best model vs the published benchmark over expeds")
 ax.legend()
 fig.tight_layout()
 fig.savefig("experiments/<name>/plots/cumulative_corr.png", dpi=150)
@@ -216,7 +235,8 @@ candidate and link each.
 - CORR is reported both full-period and recent-window (AIMC alongside where rounds have
   resolved); correlation-with-benchmark is shown so high-CORR/benchmark-echo cases are
   visible.
-- The per-cluster breakdown is present and interpreted.
+- The over-time robustness split is present and interpreted (there is no cluster axis on
+  this panel to break down instead).
 - The payout framing uses the weighted CORR+AIMC+NCORR blend, per `explain_scoring` (no
   hardcoded ordering or cap number).
 - The "what we'd stake / why (or not yet)" conclusion is explicit.

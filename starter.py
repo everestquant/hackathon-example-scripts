@@ -289,6 +289,10 @@ print(f"\nPayload OK: {len(predictions):,} unique ids, no NaNs.")
 # the platform never auto-creates one, and submitting to a name it does not know
 # comes back as a 404 telling you to create it first. Reuse the same model across
 # rounds so its board history stays on one entry.
+# create_model(name=...) is itself idempotent -- a 409 for a name you already own comes
+# back as the existing record with status="already_exists" -- so the lookup below is not
+# strictly required. It is here because reusing the SAME model across rounds is what keeps
+# your board history on one entry, and a lookup makes that explicit.
 MODEL_NAME = os.environ.get("EIQ_MODEL_ID", "hackathon-baseline")
 try:
     listed = client.get_models() or {}
@@ -358,7 +362,63 @@ except Exception as exc:  # noqa: BLE001
 print(f"Accepted: {result}")
 
 # =====================================================================
-# 9. Where your score shows up
+# 9. Money: read your staking position. THIS READS, IT NEVER STAKES
+# =====================================================================
+# Most events are display-only. Where get_started's event_staking block reports
+# money_event, the FINAL RECORDED STAKE BALANCE is the result -- not the
+# standings table -- and each round is its OWN allocation window: you draft
+# during the round you just submitted into, and the drafts lock when that round
+# closes. Which is why this sits here, right after the submit, and not once
+# before round 1: draft only there and rounds 2..N go unstaked.
+#
+# Round N's results stay sealed until round N+1 opens, and that is also when N's
+# stakes settle back to your deposit. So you always draft without having seen
+# the score, and the balance you size the next round from arrives with the
+# previous round's board.
+#
+# This script only READS. Drafting spends real money, so it stays an explicit
+# decision you make, not something a starter does on your behalf:
+#
+#   client.set_stake_allocation(model=MODEL_ID, amount_usdc="2.5", window=<round>)
+#
+# with the amount as a STRING -- a JSON number is refused rather than rounded,
+# because a binary float has already lost the digits the 6-decimal rule exists
+# to keep -- and `window` passed so a stale read cannot land a draft in a round
+# you did not mean.
+if (now.get("event_staking") or {}).get("money_event"):
+    try:
+        pos = client.get_event_staking()
+    except Exception as exc:  # noqa: BLE001, a read: report it and carry on
+        print(f"\nget_event_staking failed: {exc}")
+    else:
+        # A chain read that failed comes back as null beside an explicit
+        # *_unavailable flag, never as 0. "Could not read" is not "you have
+        # nothing", so branch on the flag rather than on the number.
+        print("\nEvent staking (this event carries money)")
+        if pos.get("balance_unavailable"):
+            print("  balance      : UNAVAILABLE (chain read failed, not zero)")
+        else:
+            print(f"  balance      : {pos.get('net_usdc')} USDC"
+                  f"  (principal {pos.get('principal_usdc')}, settled {pos.get('settled_usdc')})")
+        print(f"  slots/round  : {pos.get('max_slots')}   min stake: {pos.get('min_stake_usdc')} USDC")
+
+        draft_window = pos.get("draft_window")
+        if draft_window:
+            # The return is BOUNDED, so it is not proportional to the score: it is
+            # A * tanh(payout_factor * score / A). Size against that, not against
+            # stake x score. Absent means no bound; a stored 0.0 means
+            # bounded-by-nothing, not pays-nothing, so test presence not truth.
+            window = next((w for w in (pos.get("windows") or [])
+                           if w.get("window") == draft_window), {})
+            if "stake_return_amplitude" in window:
+                print(f"  return bound : A={window['stake_return_amplitude']} "
+                      "(pass to everestapi.scoring.payout as stake_return_amplitude)")
+            print(f"  DRAFTING IS OPEN for {draft_window}; drafts lock when it closes.")
+        else:
+            print("  No window is draftable right now.")
+
+# =====================================================================
+# 10. Where your score shows up
 # =====================================================================
 print("\nNext:")
 print("  client.get_diagnostics_leaderboard():  the board for a round")

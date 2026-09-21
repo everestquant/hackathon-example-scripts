@@ -1,13 +1,14 @@
 ---
 name: eiq-model-implementation
 description: |
-  Write and validate the modeling code behind a new Everesteer hackathon-event (futures dataset) model, either a templated built-in via MCP train(model=<preset>), or your own training script run on Everesteer compute via MCP train(model="custom", custom_model_fn=...). Use when an idea needs real modeling code (a new model type, a custom fit/predict routine, an ensemble) rather than just a different hyperparameter sweep. Covers the fit/predict contract, leakage-safe validation, and the futures-specific patterns that move AIMC.
+  Write and validate the modeling code behind a new Everesteer hackathon-event model, either a templated built-in via MCP train(model=<preset>), or your own training script run on Everesteer compute via MCP train(model="custom", custom_model_fn=...). Use when an idea needs real modeling code (a new model type, a custom fit/predict routine, an ensemble) rather than just a different hyperparameter sweep. Covers the fit/predict contract, leakage-safe validation, and the patterns that move AIMC.
 ---
 
 # Implementing a Model for an Everesteer Hackathon Event
 
-An Everesteer hackathon event asks you to rank global futures **chains** (grouped into **clusters**) at each **exped** against the event dataset's graded target, the column
-`get_dataset_schema` reports as `primary_target`, read at runtime rather than hardcoded. This skill is about the *code* that produces those rankings: how to express a model so it runs cleanly on Everesteer compute, and how to convince yourself the model is real before you put value behind it.
+An Everesteer hackathon event asks you to rank the instruments present at each **exped** against the event dataset's graded target, the column `get_dataset_schema` reports as `primary_target`, read at runtime rather than hardcoded. This skill is about the *code* that produces those rankings: how to express a model so it runs cleanly on Everesteer compute, and how to convince yourself the model is real before you put value behind it.
+
+**The event panel is obfuscated, and that shapes the code you write.** Rows carry no instrument identity, no chain and no cluster: `meta_cols` is `exped` and `data_type`, and `data_type` is a constant split marker. Feature names are opaque labels with no decodable structure. So there is nothing to group by except time, and any pattern that needs instrument or sector metadata - cluster sample-weighting, roll-window checks, liquidity tiers - belongs to the live tournament, not here. `get_features` answers a hackathon key with `403 scope_mismatch` and `get_universe` returns an empty instrument list; `get_dataset_schema` (and `verbose=True` for feature-set membership) is your column source.
 
 You never touch any platform-internal repository. Everything here is built on the public `everestapi` SDK, the Everesteer MCP tools, and the helper code in `example-scripts/` plus a `models/` directory you own.
 
@@ -41,12 +42,13 @@ class MyEverestModel:
     def fit(self, X: pd.DataFrame, y: pd.Series, sample_weight=None) -> "MyEverestModel":
         """Train.
 
-        X : feature frame. Columns are encoded, bin-coded names of the form
-            feature_<theme>_<n>, each value an integer bin; the bin range and
-            the missing sentinel come from the schema's feature_encoding.
-            Rows are (exped, chain) observations.
+        X : feature frame. Columns are opaque bin-coded feature names - read the
+            real ones from the schema or the parquet, they follow no pattern you
+            can match on. Each value is an integer bin; the bin count, value range
+            and missing sentinel come from the schema's feature_encoding.
+            Rows are (exped, anonymous instrument) observations.
         y : the graded target (schema primary_target), aligned to X.index.
-        sample_weight : optional per-row weights (see cluster weighting below).
+        sample_weight : optional per-row weights.
         """
         Xn = X.to_numpy(dtype=np.float32)
         yn = y.to_numpy(dtype=np.float32)
@@ -65,7 +67,7 @@ class MyEverestModel:
 Rules that matter:
 
 - **DataFrame in, Series out.** Convert to numpy *inside* the method, never at the boundary. The index is your contract with the scorer and you must preserve it.
-- **One score per row, index-aligned.** The platform ranks your raw scores cross-sectionally within each exped, so the absolute scale is irrelevant. Only the within-exped ordering of chains is scored. Don't pre-normalize to `[-1, 1]`; don't drop or reorder rows.
+- **One score per row, index-aligned.** The platform ranks your raw scores cross-sectionally within each exped, so the absolute scale is irrelevant. Only the within-exped ordering of rows is scored. Don't pre-normalize to `[-1, 1]`; don't drop or reorder rows.
 - **No NaNs out.** A single NaN poisons that exped's rank. Fill or guard before returning.
 - **Lazy-import optional deps** with an actionable message, so a missing package fails loudly rather than at fit time:
 
@@ -145,12 +147,13 @@ assert p.index.equals(sub.index) and not p.isna().any()
 ```
 
 **Step 2. Sanity-bound the CORR.** Compute per-exped rank correlation against the target on a *held-out* split, never the rows you trained on. With a hackathon key that is not the downloadable `validation` split. Its target columns are blanked (it's a server-scored practice board), so carve an embargoed tail off the labeled `train` split instead, the same way `notebooks/02_train_and_submit.ipynb` does: hold out the last N expeds, and discard enough more before the boundary that the
-target's forward window cannot leak across it. **The horizon is a dataset fact and is
-not encoded in the target's name on every dataset**. Check the dataset's own
-documentation or metadata rather than reading a number off the column:
+target's forward window cannot leak across it. **The horizon is a dataset fact, and this
+dataset does not publish it**: not in the target's name, not in any schema field. So do not
+reverse-engineer one from a column name. Embargo generously instead - erring wide costs
+almost nothing, erring short is the leak:
 
 ```python
-EMBARGO = 20  # >= the target's forward horizon in expeds; widen it if unsure
+EMBARGO = 20  # a deliberately wide round number, NOT a horizon read off the data
 tail = train["exped"].unique()[-100:]
 holdout = train[train["exped"].isin(tail)]
 
@@ -160,28 +163,46 @@ metrics = EverestAPI.evaluate(preds, holdout, target=TARGET)
 A healthy futures model lands at a **small positive** CORR. On the order of a few hundredths. Both tails are red flags:
 
 - **CORR near zero or negative:** the model isn't learning, or features/target are misaligned. Check the index join and the feature filter.
-- **CORR suspiciously high** (e.g. an order of magnitude above what `ai_model` and the leaderboard achieve): assume **leakage** until proven otherwise. The usual culprits are evaluating on training rows, leaking the target through a derived column, or an index that lets future expeds bleed in.
+- **CORR suspiciously high** (e.g. an order of magnitude above what the published benchmark and the leaderboard achieve): assume **leakage** until proven otherwise. The usual culprits are evaluating on training rows, leaking the target through a derived column, or an index that lets future expeds bleed in.
 
-Run `run_validation_diagnostics` (MCP) for the platform's own read on feature exposure and per-cluster behavior before trusting a number.
+Run `run_validation_diagnostics` (MCP) for the platform's own read on feature exposure and per-exped behaviour before trusting a number.
 
 **Step 3. Guard the fit/predict loop against subtle leakage.** Early stopping is the classic trap: if a validation fold steers the stopping point and that same fold feeds your reported metric, you've contaminated the estimate. Tune stopping inside a nested split, then report on data that played no role in fitting. Any per-feature standardization, target encoding, or neutralization must be fit on train only and *applied* to validation. Never re-fit there.
 
 ## Patterns that move AIMC (and why)
 
-Payout is a weighted blend of CORR, AIMC, and NCORR. Call `explain_scoring` for the live weights and cap; don't hardcode which term dominates. **AIMC** (AI Model Contribution, the contribution beyond the live stake-weighted ai-model consensus) and **NCORR** (Neutralized Correlation) both mean a merely-accurate model that echoes consensus pays little on those components. That score is then scaled by a per-round **payout factor**, frozen at the round's stake lock: 1 below a fixed total-stake threshold, shrinking above it, so it can differ round to round. AIMC is only measurable once a round resolves, so offline you can't observe it directly. Judge candidate changes qualitatively, by whether they measurably lower correlation with the benchmark / `ai_model` without giving up real CORR, not against a fabricated offline number. Uniqueness is the lever; the patterns below all chase AIMC.
+The round score is a weighted blend of CORR, AIMC and NCORR, bounded per round. Call `explain_scoring` for the live weights; don't hardcode which term dominates. **AIMC** and **NCORR** both mean a merely-accurate model that re-expresses what the reference already says pays little on those components. On a money event the round score is then mapped to a payout through a **bounded** function, `A * tanh(payout_factor * score / A)`; `get_event_staking` reports the `payout_factor` and `stake_return_amplitude` each round froze, and `everestapi.scoring.payout` takes both.
 
-- **Residualize the target against `ai_model`.** Train on the residual of the graded target after projecting out the benchmark, so the model can only learn what the benchmark misses. Raises AIMC by lowering correlation with the static benchmark and the live ai-model.
-- **Neutralize predictions against the benchmark / heavy features.** OLS-project your raw scores onto the benchmark (or a few dominant feature exposures) and subtract the projection. Lowers correlation to consensus, raising AIMC, usually at a modest CORR cost, tune the neutralization proportion.
+**What AIMC is measured against is a per-product setting, and on a hackathon event it works in your favour.** `explain_scoring`'s `metrics.aimc` reports it as your contribution over **the event's own reference benchmark predictions**, not the live crowd consensus the tournament uses. The benchmark is downloadable over `train`, so unlike the tournament case you *can* build a close offline proxy: residualize your predictions against the benchmark per exped, then correlate the residual with the target. Part A of `notebooks/03_neutralization_and_ensembling.ipynb` implements it as `contribution()`. Treat it as a proxy still - the real number comes back after you submit - but not as an unobservable.
+
+- **Residualize the target against the benchmark.** Train on the residual of the graded target after projecting out the benchmark series, so the model can only learn what the benchmark misses. Raises AIMC directly, since the benchmark is what AIMC is measured against here.
+- **Neutralize predictions against the benchmark / heavy features.** OLS-project your raw scores onto the benchmark (or a few dominant feature exposures) and subtract the projection. Lowers correlation to the reference, raising AIMC, usually at a modest CORR cost; tune the neutralization proportion. Note NCORR's own neutralization is a spectrally-anchored ridge against a frozen core feature set whose membership is not published, so your own OLS residualization will not reproduce that number.
 - **Blend multiple targets.** The auxiliary targets (every entry in the schema's `targets` other than the graded one) carry related-but-distinct signal; a weighted blend can be steadier than chasing the graded target alone. Which auxiliaries are diverse and which are near-duplicates is a property of the dataset you are on, so **compute the target correlation matrix yourself**: do not carry numbers over from another event. Any pair near correlation −1.0 are inverses of one signal; never include both raw.
 - **Bag / ensemble.** Average several seeds or row-subsamples to cut variance. Steadier rankings translate to steadier AIMC across rounds, which matters more than a single hot exped.
 
 Each of these earns its keep only if it raises differentiated signal. Accuracy that everyone already has is nearly free on the payout formula.
 
-## Futures-specific concerns
+## Event-specific concerns
 
-- **Cluster-aware sample weighting.** Clusters differ wildly in size and in how dispersed their returns are. Equal per-row weighting lets the largest cluster dominate the fit. Pass `sample_weight` to balance influence, e.g. inverse-frequency by cluster, so the model generalizes across the universe rather than overfitting one corner.
-- **Missing chains / contracts.** The live universe shifts as chains onboard, expire, or fall out of coverage; a chain present in training may be absent live (and vice versa). Never assume a fixed instrument set. Reindex defensively and impute missing features within the schema's declared bin range rather than dropping rows.
-- **Robustness across clusters.** A model with a great blended CORR but negative CORR in two clusters is fragile. Check the per-cluster breakdown (from your own out-of-sample predictions, plus `run_validation_diagnostics`) and prefer broadly-positive models over ones that win on one cluster.
+- **Never impute over the missing sentinel.** A feature value equal to the schema's
+  `feature_encoding.missing` (commonly `-1.0`) means the source was not onboarded for that
+  row. Map it to `NaN` and let a NaN-aware learner handle it, or treat it as its own
+  category. Do **not** fill it with a value inside the real bin range: that tells the model
+  "missing" is an ordinal position on the same scale, which is false. And do not fill with
+  `0`, which is a real bin. (A NaN *target* is different: that row was uncomputable and is
+  never imputed, so drop it.)
+- **Never assume a fixed column set.** The served split can carry a different set of feature
+  columns than the one you trained on. Select features **by name** inside `predict` and
+  reindex defensively, so an absent column becomes an honest `NaN` rather than silently
+  shifting a positional array underneath the model.
+- **Robustness over time, not over clusters.** There is no cluster axis on this panel, so
+  the honest fragility check is temporal: split your holdout in half and confirm the edge
+  survives in both. An edge that lives in one stretch of expeds is a regime artifact.
+  Per-exped CORR spread and the worst run of negative expeds are the numbers to look at,
+  alongside `run_validation_diagnostics`.
+- **Sample weighting has no grouping column to key on.** Inverse-frequency weighting by
+  cluster or sector is not available here; if you weight, weight on something the panel
+  actually publishes, such as exped recency.
 
 ## Where this hands off
 
