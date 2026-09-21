@@ -131,8 +131,12 @@ print(f"Missing sentinel: {MISSING!r}   (from schema['feature_encoding'])")
 # scored split is `validation`. Tournament keys have no cadence object and
 # also land on `validation` here (this script's submit half is the
 # diagnostics loop, not a live-round submission).
+# `split_window` records WHICH round these rows came from. Step 5 needs it: the
+# lane is decided by the rows in hand, and that is a fact about this download,
+# not about whatever the clock says once the job and the predictions are done.
 cadence = (client.get_started() or {}).get("cadence") or {}
 split = "live" if cadence.get("open_window") else "validation"
+split_window = cadence.get("open_window") if split == "live" else None
 # Uploads are refused (409) while a round settles and the next opens. Say so
 # rather than letting the submit at the end fail for a reason that looks like a
 # bad file -- cadence.intake_fenced is the platform telling you to wait.
@@ -186,32 +190,58 @@ with open(upload_pkl, "wb") as f:
     cloudpickle.dump(build_predict(model, feature_order, MISSING), f)
 
 # =====================================================================
-# 5. Submit down the lane the clock says is open. A round sent down the
-#    practice lane matches none of a round's ids and settles at $0, so
-#    the cadence below is re-read rather than trusted from step 4.
+# 5. Submit down the lane THESE ROWS belong to. A round sent down the
+#    practice lane matches none of that round's ids and settles at $0,
+#    and so does the reverse, so the lane follows `split` from step 4 and
+#    the clock re-read below is only a guard on whether it is still valid.
 #    Several models at once: the submit_event_predictions_batch MCP TOOL
 #    (there is no batch method on the Python client - loop this call).
 # =====================================================================
+# create_model is idempotent WHEN YOU PASS A NAME: a 409 for a name you already
+# own resolves to the existing record with status="already_exists". Either way
+# read the response's `id`. That is the stable model_id every submit lane wants;
+# `name` is a mutable display label, and passing it where a model_id belongs is
+# a 403 "Model not owned by caller".
 MODEL_NAME = "hosted-lgbm-baseline"
-client.create_model(MODEL_NAME)  # idempotent, 409 "already exists" is fine
+MODEL_ID = client.create_model(name=MODEL_NAME)["id"]
+print(f"Model {MODEL_NAME!r} -> {MODEL_ID}")
 
 # Re-read the clock. Minutes passed while the job trained and the split
-# downloaded, and the lane follows the clock, not the read you took back then.
+# downloaded. This does NOT choose the lane -- `split` already did, back when the
+# rows were fetched -- it only answers whether those rows are still submittable.
 now_cadence = (client.get_started() or {}).get("cadence") or {}
+now_window = now_cadence.get("open_window")
 pyver = f"{sys.version_info.major}.{sys.version_info.minor}"
 
-if now_cadence.get("open_window"):
-    print("A sealed round is OPEN, submitting to the event lane.")
+if now_cadence.get("intake_fenced"):
+    raise SystemExit(
+        f"Intake is fenced (phase {now_cadence.get('phase')!r}): a round is settling and "
+        "uploads are refused. Poll client.get_status() and re-run the submit."
+    )
+if split == "live" and now_window != split_window:
+    raise SystemExit(
+        f"These rows are round {split_window!r}; the open round is now {now_window!r}. "
+        "Re-run: download `live` again for the open round and predict on it. Sending them "
+        "down the practice lane instead would match zero ids and spend the upload."
+    )
+if split == "validation" and now_window:
+    raise SystemExit(
+        f"Round {now_window!r} opened while this ran; these are practice-board rows. "
+        "Re-run to enter the round rather than spend an upload on a display-only board."
+    )
+
+if split == "live":
+    print(f"Round {split_window} is open and these are its rows: the event lane.")
     result = client.submit_event_predictions(
-        MODEL_NAME,
+        MODEL_ID,
         "hosted_predictions.parquet",
         model_pkl=upload_pkl,  # required: a CLOUDPICKLED predict() callable
         model_pkl_python_version=pyver,
     )
 else:
-    print("No round open, submitting to the validation practice board.")
+    print("These are practice-board rows: the validation lane.")
     result = client.submit_validation_diagnostics(
-        MODEL_NAME,
+        MODEL_ID,
         "hosted_predictions.parquet",
         model_pkl=upload_pkl,
         model_pkl_python_version=pyver,

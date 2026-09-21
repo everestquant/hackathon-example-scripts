@@ -137,7 +137,11 @@ try:
 except Exception as exc:  # noqa: BLE001
     bail("download_dataset(split='train')", exc)
 
+# `scored_window` records WHICH round these rows came from. Step 8 needs it: the
+# lane is decided by the rows in hand, and "which rows are these" is a fact about
+# the download, not about whatever the clock says some minutes later.
 scored_split = "live" if round_open else "validation"
+scored_window = cadence.get("open_window") if round_open else None
 try:
     scored_path = client.download_dataset(split=scored_split)
 except Exception as exc:  # noqa: BLE001
@@ -145,6 +149,7 @@ except Exception as exc:  # noqa: BLE001
         print(f"\nlive is not being served right now ({exc}).")
         print("No round is open, practising on the validation board instead.")
         scored_split = "validation"
+        scored_window = None
         try:
             scored_path = client.download_dataset(split="validation")
         except Exception as inner:  # noqa: BLE001
@@ -254,8 +259,24 @@ print(f"\nPayload OK: {len(predictions):,} unique ids, no NaNs.")
 # =====================================================================
 # 8. Submit down the CORRECT lane
 # =====================================================================
-# Re-read get_started IMMEDIATELY before submitting. A round can open or close
-# while you were fitting, and the lane follows the clock, not your intent.
+# The lane follows the ROWS YOU ARE HOLDING -- `scored_split` above -- never a
+# clock read taken after they were downloaded. Those are two different questions,
+# and the gap between them is exactly where this goes wrong:
+#
+#   * a fence that clears while you fit turns "no round open" into "round open",
+#     and choosing the lane from that fresh read sends PRACTICE rows down the
+#     event lane;
+#   * a round that closes while you fit does the reverse, and sends ROUND rows
+#     down the practice lane.
+#
+# Either way the upload is accepted (202 pending) and fails minutes later on zero
+# id overlap, because the splits are disjoint id namespaces. You lose the upload,
+# the minutes, and anything staked on that model settles at nothing.
+#
+# So re-read get_started IMMEDIATELY before submitting, but read it as a GUARD,
+# not as the decision: it answers "are the rows I am holding still submittable?".
+# When they are not, the move is to re-run, never to redirect them at the other
+# lane.
 #
 # From the SDK's own warning on these two calls:
 #   "The two take the same arguments and their ids are NOT interchangeable:
@@ -292,14 +313,33 @@ except Exception as exc:  # noqa: BLE001
     bail("get_started (pre-submit re-read)", exc)
 
 now_cadence = now.get("cadence") or {}
+now_window = now_cadence.get("open_window")
+
 if now_cadence.get("intake_fenced"):
     print("\nIntake is fenced around a round boundary. Wait for the next phase.")
     sys.exit(0)
 
+if scored_split == "live" and now_window != scored_window:
+    # The round these ids belong to is over. Nothing scores them now: the event
+    # lane has moved to a different id namespace, and the practice board never
+    # shared this one. Predict the open round rather than redirect these.
+    print(f"\nThese rows are round {scored_window!r}; the open round is now {now_window!r}.")
+    print("Re-run: download `live` again for the open round and predict on it.")
+    sys.exit(1)
+
+if scored_split == "validation" and now_window:
+    # A round opened while this was fitting. The practice board WOULD take these
+    # rows -- it takes them in every phase -- but it is display-only, and the
+    # allowance it spends is account-wide and never replenishes. Re-run, and put
+    # that upload into the round instead.
+    print(f"\nRound {now_window!r} opened while this was fitting; these are practice rows.")
+    print("Re-run to enter the round rather than spend an upload on a display-only board.")
+    sys.exit(1)
+
 try:
     pyver = f"{sys.version_info.major}.{sys.version_info.minor}"
-    if now_cadence.get("open_window"):
-        print("\nA sealed round is OPEN, submitting to the event lane.")
+    if scored_split == "live":
+        print(f"\nRound {scored_window} is open and these are its rows: the event lane.")
         result = client.submit_event_predictions(
             MODEL_ID, predictions, model_pkl=model_path, model_pkl_python_version=pyver
         )
@@ -308,7 +348,7 @@ try:
         # the thing that distinguishes the event lane, but a hackathon key is
         # refused on the practice board without it too:
         #   400 "A model .pkl file is required for hackathon submissions."
-        print("\nNo round open, submitting to the validation practice board.")
+        print("\nThese are practice-board rows: the validation lane.")
         result = client.submit_validation_diagnostics(
             MODEL_ID, predictions, model_pkl=model_path, model_pkl_python_version=pyver
         )
