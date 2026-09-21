@@ -114,7 +114,9 @@ print(f"\nTarget: {target_col}   (schema advertises {len(targets)} target(s))")
 # It is absent on a tree that does not declare its encoding, which is not
 # permission to assume a default either, so fall back only as a last resort.
 encoding = schema.get("feature_encoding") or {}
-MISSING = encoding.get("missing", -1.0)
+MISSING = encoding.get("missing")
+if MISSING is None:            # absent OR published as null; neither declares a sentinel
+    MISSING = -1.0
 print(f"Missing sentinel: {MISSING!r}   (from schema['feature_encoding'])")
 if schema.get("primary_target_listed") is False:
     # Expected on a dataset that publishes the graded column under an alias:
