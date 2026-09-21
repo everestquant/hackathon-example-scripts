@@ -115,6 +115,16 @@ with open(pkl_path, "rb") as f:
 manifest = status.get("feature_manifest") or {}
 feature_order = manifest["features"]
 
+# The missing sentinel is a dataset fact. `feature_encoding` declares the bin
+# count, the value range and the sentinel; read it rather than assuming -1. It is
+# absent on a tree that does not declare its encoding, which is not permission to
+# assume a default either, so fall back only as a last resort.
+encoding = (client.get_dataset_schema() or {}).get("feature_encoding") or {}
+MISSING = encoding.get("missing")
+if MISSING is None:            # absent OR published as null; neither declares a sentinel
+    MISSING = -1.0
+print(f"Missing sentinel: {MISSING!r}   (from schema['feature_encoding'])")
+
 # Predict on the split the platform is CURRENTLY scoring. In a multi-round
 # cadence event the open round is served as `live` (get_started's cadence
 # object names it); before round 1: and in a single-window event, the
@@ -139,14 +149,15 @@ val = pd.read_parquet(client.download_dataset(split=split))
 # column order is authoritative: a different order returns plausible-but-wrong
 # predictions rather than an error.
 #
-# The trainer applies NO missing-value transform: features are bin-coded and -1
-# IS the missing bin (see get_dataset_schema -> feature_encoding for this
-# dataset's bin count and its `missing` sentinel), so missingness is carried in
-# the bins and the served split carries no NaNs at all. The fill below is
-# therefore a no-op today and exists only so a malformed frame fails
-# predictably. It fills with -1, NOT 0.0: 0 is a real bin, so filling with it
-# would silently recode "missing" as "lowest bin" the moment a NaN did appear.
-x = val[feature_order].fillna(-1.0).to_numpy("float32")
+# The trainer applies NO missing-value transform: features are bin-coded and the
+# missing sentinel IS the missing bin, so missingness is carried in the bins and
+# the served split carries no NaNs at all. The fill below is therefore a no-op
+# today and exists only so a malformed frame fails predictably. It fills with the
+# SENTINEL, not 0.0: 0 is a real bin, so filling with it would silently recode
+# "missing" as "lowest bin" the moment a NaN did appear. MISSING comes from
+# feature_encoding above rather than a literal, because writing the value in here
+# would inject an out-of-range code on a panel that declares a different one.
+x = val[feature_order].fillna(MISSING).to_numpy("float32")
 val_ids = val["id"] if "id" in val.columns else val.index
 submission = pd.DataFrame({"prediction": model.predict(x)}, index=pd.Index(val_ids, name="id"))
 submission.to_parquet("hosted_predictions.parquet")
@@ -159,9 +170,12 @@ print(f"  {len(submission):,} predictions written to hosted_predictions.parquet"
 # So wrap it in a predict() callable and cloudpickle THAT. The wrapper selects
 # by name off the manifest, which is also what keeps the positional estimator
 # fed in the right column order.
-def build_predict(fitted, columns):
+def build_predict(fitted, columns, missing):
+    # `missing` is closed over by value so the pickled artifact carries the
+    # sentinel with it, instead of depending on a global that only exists here.
+    # This one runs server-side, where the frame is not ours.
     def predict(live_features, live_benchmark_models=None):
-        arr = live_features[columns].fillna(-1.0).to_numpy("float32")
+        arr = live_features[columns].fillna(missing).to_numpy("float32")
         return pd.DataFrame({"prediction": fitted.predict(arr)}, index=live_features.index)
 
     return predict
@@ -169,7 +183,7 @@ def build_predict(fitted, columns):
 
 upload_pkl = "hosted_model_callable.pkl"
 with open(upload_pkl, "wb") as f:
-    cloudpickle.dump(build_predict(model, feature_order), f)
+    cloudpickle.dump(build_predict(model, feature_order, MISSING), f)
 
 # =====================================================================
 # 5. Submit down the lane the clock says is open. A round sent down the
