@@ -51,7 +51,7 @@ event you are actually in. Call it first, and call it again before every submit.
    | Notebook | ~Time | What you get |
    |---|---|---|
    | [`notebooks/00_setup_and_connect.ipynb`](notebooks/00_setup_and_connect.ipynb) | 2 min | Connected, and the event clock printed in plain words |
-   | [`notebooks/01_explore_the_data.ipynb`](notebooks/01_explore_the_data.ipynb) | 5 min | The dataset, expeds, encoded features, the `-1` sentinel, the target family |
+   | [`notebooks/01_explore_the_data.ipynb`](notebooks/01_explore_the_data.ipynb) | 5 min | The dataset, expeds, encoded features, the missing sentinel, the target family |
    | [`notebooks/02_train_and_submit.ipynb`](notebooks/02_train_and_submit.ipynb) | 10 min | A baseline, honestly evaluated, submitted to the open round |
    | [`notebooks/03_neutralization_and_ensembling.ipynb`](notebooks/03_neutralization_and_ensembling.ipynb) | 20 min | Two techniques for once the baseline works |
 
@@ -196,10 +196,10 @@ leaves nothing for round 4. Never hardcode a number; read `uploads_remaining` fr
 
 Features are **encoded** into cross-sectional bins. The bin count and the missing
 sentinel are dataset facts, so read them from `get_dataset_schema` (`feature_encoding`)
-rather than assuming. A value of `-1.0` means **missing**. That source was not
-onboarded for the instrument/date. So treat it as NaN or as
-its own category, never as an ordinal below 0. A NaN target means the row was uncomputable; it
-is never imputed, so drop those rows.
+rather than assuming (the sentinel is commonly `-1.0`). A value equal to that sentinel
+means **missing**: that source was not onboarded for the instrument/date. So treat it as
+NaN or as its own category, never as an ordinal below the lowest real bin. A NaN target
+means the row was uncomputable; it is never imputed, so drop those rows.
 
 The downloaded parquet has **no `id` column**. The id every submit lane wants is the parquet
 **index** (its name is `id`), whose values are opaque strings. Submit them verbatim,
