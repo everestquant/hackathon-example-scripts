@@ -44,7 +44,11 @@ into. Any recurring submission job runs on **your own** machine/cron/systemd.
   the interpreter that pickled the model
   (`f"{sys.version_info.major}.{sys.version_info.minor}"`); omitting it is treated as
   `3.11`, so an artifact pickled under a newer interpreter can fail to load with no
-  traceback.
+  traceback. Declaring the version is not the whole of it: `get_started`'s
+  `model_python_versions.library_pins` gives, per version, a URL listing the exact library
+  set that version's sandbox runs, so `pip install -r <url>` before you pickle. The
+  declaration is also checked against the pickle's own embedded bytecode where readable,
+  and a provable mismatch is refused at upload wherever enforcement is on.
 - Boards rank on each round's **round score**, a weighted blend of CORR20, AIMC and
   NCORR, clipped per round. Call `explain_scoring` for the live weights; don't assume
   which term dominates, since the weights are a live setting that has changed before.
@@ -90,8 +94,11 @@ tournament discriminator, not a statement that no event round is open).
    check the round's board.
 8. **Monitor**: `get_diagnostics_leaderboard()` for the round,
    `get_diagnostics_standings()` for the cumulative result.
-9. **(Optional) check event staking**: only after the pre-staking checklist and
-   explicit operator OK; most events are display-only, so confirm first.
+9. **(Money events) draft this round's stake**: only after the pre-staking checklist and
+   explicit operator OK; most events are display-only, so confirm first. Note this step is
+   **inside** the per-round loop, not a one-off before round 1: on the current cadence each
+   round is its own allocation window, so you draft during the round you just submitted into
+   and the drafts lock when that round closes.
 
 ## 1-2. Register and read the clock
 
@@ -269,6 +276,23 @@ Fail loudly (non-zero exit, alert) rather than submit a partial/NaN payload.
 display-only. Confirm via `get_started`'s `event_staking` block before assuming yours
 carries money. Where it does, the **final recorded stake balance decides the winner**,
 not the standings table, so treat every call here as money-bearing.
+
+**Where this sits in the loop, and when you find out.** On the current cadence the allocation
+window *is* the round: draft after submitting into the open round, and the drafts lock when it
+closes. Draft once before round 1 and every later round goes unstaked. **Round N's results stay
+sealed until round N+1 opens**, which is also when N's stakes settle back to the event deposit,
+so you always draft without having seen the score, and the balance for sizing the next round
+arrives with the previous round's board. `get_event_staking()`'s `windows[]` is the per-round
+trail: `allocations` (`locked_at`, on-chain `lock_tx_hash`) and `settlements` (`payout_micro`,
+`claim_tx_hash`).
+
+**A round's return is bounded, so never size on `stake x score`.** It is
+`A * tanh(payout_factor * score / A)`, with `A` the per-window `stake_return_amplitude` that
+`get_event_staking` reports. Pass it to `everestapi.scoring.payout` as `stake_return_amplitude`.
+The map is strictly increasing (it reorders nothing, a better score is always worth more) but it
+compresses mid-range magnitudes as well as extremes, so a proportional estimate is optimistic
+exactly where a large allocation would be decided. Absent means no bound; a stored `0.0` means
+bounded-by-nothing rather than pays-nothing, so test for presence, not truthiness.
 
 Pre-staking checklist:
 - [ ] **Operator has explicitly approved** staking this model, this amount, this window.
