@@ -120,8 +120,10 @@ Document the chosen interpretation and the rejected ones. That reasoning is part
 ## Step 1: Planning checklist (answer before any training)
 
 - **Idea & novelty.** One sentence: what is being tested and why it might add AIMC.
-- **Research type.** New target/feature-eng · new architecture · ensemble/blend ·
-  training-procedure · data change. This decides what you sweep (see below).
+- **Research type.** Name which one kind of change you are testing: a new target or feature
+  engineering, a new architecture, an ensemble or blend, a training procedure, or a data
+  change. That decides what you may vary and what you must hold fixed; the table is under
+  [Sweep selection by research type](#sweep-selection-by-research-type).
 - **Baseline.** The published benchmark. Download it over `train` and score it on **your
   own embargoed holdout**, carved from the labeled `train` split, so every round has a
   baseline row. A hackathon key cannot score `validation` locally: its target columns are
@@ -231,8 +233,13 @@ Match the sweep to the question. One variable at a time, per config, within a ro
 | **New target / feature engineering** | which target you fit (graded vs an auxiliary), feature subset, binning/preprocessing | model + hyperparameters (use a fixed reference model) |
 | **New architecture** | depth/width, learning rate, regularization, estimators/epochs | features, target |
 | **Ensemble / blend** | member weights, blend rule, bag count, stacker | the members themselves |
-| **Training procedure** | residualization strength vs the benchmark, neutralization proportion, loss weighting, embargo | model + features |
-| **Data change** | exped sampling, feature-set size, holdout length | model + target |
+| **Training procedure** | residualization strength vs the benchmark, neutralization proportion, loss weighting | model + features |
+| **Data change** | exped sampling (which expeds, how many), feature subset within the published set | model + target |
+
+**Never sweep the evaluation itself.** The embargo and the holdout are fixed once, before
+round one, and stay fixed for the whole run. Shrink the embargo and CORR goes up because the
+leak comes back, so a sweep that selects on CORR will reliably pick the leakiest setting.
+Varying the holdout window is the same trap: you end up choosing the period that flatters you.
 
 If one parameter clearly dominates the results, spend a whole round mapping its range
 (including the extremes) with everything else pinned.
