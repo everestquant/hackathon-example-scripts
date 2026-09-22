@@ -93,6 +93,24 @@ pickle is rejected.
 Build more than one model. Rounds cover different periods, so the model that wins round 1 is not
 reliably the one that wins round 3.
 
+#### A negative practice score is not a broken model
+
+`validation` covers a later period than `train`, and a gap separates the two. A sound model can
+score **negative** CORR on the practice board while scoring positive on a holdout cut from
+`train` itself. The practice board is display-only, so a negative score there costs you nothing.
+
+Do not flip the sign of your predictions in response. That fits the one period you can see, and
+it inverts on any period where the relationship runs the other way.
+
+Read the separate terms before concluding anything. If raw CORR is negative while **NCORR**
+(your correlation after the core feature set is projected out) is near zero or positive, the
+loss came from exposure to those core features rather than from your signal, and neutralising
+that exposure is a legitimate response. Feature exposure is display-only and does not affect
+rank, but it tells you where a score came from.
+
+Aim for a model that generalises across many periods rather than one tuned to this split. Every
+round is scored on a period you have not seen, and the standings accumulate across all of them.
+
 ### Each round
 
 When a round opens, it serves a fresh set of rows on the `live` split:
