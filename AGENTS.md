@@ -373,10 +373,14 @@ the `train` tool, metered, and worth previewing before you commit to it:
   on, so measure the correlation matrix yourself rather than carrying numbers over from
   another event.** Near-duplicates add little together; a strongly negative pair are
   inverses of one signal, so never blend both raw. Whatever you train on, you still
-  submit a single prediction column, scored on the graded target. Full walkthrough: Part B of
-  [`notebooks/03_neutralization_and_ensembling.ipynb`](notebooks/03_neutralization_and_ensembling.ipynb).
+  submit a single prediction column, scored on the graded target.
+  [`notebooks/01_explore_the_data.ipynb`](notebooks/01_explore_the_data.ipynb) prints that
+  correlation matrix for the dataset you are on.
 - **Feature neutralization** can add AIMC the same way, by reducing a model's exposure to
-  dominant feature groups, Part A of the same notebook.
+  dominant feature groups: project those features out of your predictions **per exped**
+  (neutralization is cross-sectional) at a proportion you sweep, and watch what it costs in
+  CORR. The [`eiq-model-implementation`](.claude/skills/eiq-model-implementation/SKILL.md)
+  skill carries the projection helper and the offline AIMC proxy that scores the sweep.
 - Lower-turnover models tend to score better over time.
 
 ## Research skills

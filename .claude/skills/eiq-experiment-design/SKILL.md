@@ -65,10 +65,10 @@ tournament reads that research write-ups reach for do not work here, and two of 
     predictions**, not the crowd consensus the live tournament uses. That is a real
     advantage: the benchmark is downloadable over `train`, so you can build a close
     offline proxy - residualize your predictions against the benchmark per exped, then
-    correlate the residual with the target. Part A of
-    `notebooks/03_neutralization_and_ensembling.ipynb` implements exactly this as
-    `contribution()`. It is still a proxy, confirmed server-side after you submit, but it
-    is not the unobservable quantity a tournament write-up would tell you it is.
+    correlate the residual with the target. **`eiq-model-implementation`** carries that
+    as a `contribution()` helper you can lift. It is still a proxy, confirmed server-side
+    after you submit, but it is not the unobservable quantity a tournament write-up would
+    tell you it is.
   - **NCORR**: correlation after neutralizing against a **frozen core feature set**. The
     schema's `core_feature_overlap` tells you how many of those core features fall inside
     each published feature set; the membership is deliberately not published. Note the
@@ -242,8 +242,10 @@ A single average metric hides the things that sink a model here.
   whether the edge holds in the first half of the holdout as well as the second. An edge
   that lives in one stretch of expeds is a regime artifact, not skill.
 - **Feature concentration.** A model resting almost entirely on one or two features is
-  fragile and scores poorly on NCORR, which is a scored term. Check the exposure profile;
-  Part A of `notebooks/03_neutralization_and_ensembling.ipynb` both measures and fixes it.
+  fragile and scores poorly on NCORR, which is a scored term. Measure it as the largest
+  absolute correlation between your predictions and any single feature, and fix it by
+  neutralizing per exped against the heavy block at a swept proportion
+  (**`eiq-model-implementation`** has both).
 - **Rounds cover different periods.** One round's standing is a relative signal only:
   neither the level nor the ordering of your candidates transfers reliably to the next
   round. Keep several genuinely different models alive rather than betting on last
