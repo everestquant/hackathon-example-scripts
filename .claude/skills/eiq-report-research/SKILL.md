@@ -44,8 +44,11 @@ internal platform repo to call into.
     it as the proxy it is, and report the server's number where rounds have resolved.
   - **NCORR**: correlation after neutralizing against a frozen core feature set whose
     membership is not published. Report it where rounds have resolved; note that the
-    platform uses a spectrally-anchored ridge, so a local OLS residualization will not
-    reproduce it.
+    platform runs it on **rank-gaussianized** predictions and neutralizes with a
+    spectrally-anchored ridge, so a local OLS residualization on raw predictions will not
+    reproduce it. Report a resolved NCORR of `null` as null, never as zero: it means the
+    core features were absent from the scored frame, which leaves that round without a
+    round score.
   - **correlation-with-benchmark**: corr of your preds with the benchmark series. This is
     the tell for the "high CORR, high correlation-with-benchmark" trap: a model that just
     re-expresses the benchmark and will earn little AIMC.

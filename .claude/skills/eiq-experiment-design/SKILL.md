@@ -75,9 +75,15 @@ tournament reads that research write-ups reach for do not work here, and two of 
     tell you it is.
   - **NCORR**: correlation after neutralizing against a **frozen core feature set**. The
     schema's `core_feature_overlap` tells you how many of those core features fall inside
-    each published feature set; the membership is deliberately not published. Note the
-    platform computes it with a spectrally-anchored ridge, not exact OLS, so reimplementing
-    exact residualization yourself will not reproduce the number.
+    each published feature set; the membership is deliberately not published. A high
+    overlap is not an escape route: it means the core features already sit inside the ones
+    you trained on. Two things before you try to reproduce the number offline. It runs on
+    your **rank-gaussianized** predictions, not your raw ones, and the platform neutralizes
+    with a spectrally-anchored ridge rather than exact OLS (today's core set is
+    rank-deficient, which keeps the ridge branch active), so an exact residualization will
+    not match it. NCORR is **null** when none of the core features are present on the
+    scored frame, and a null term means no round score at all: those entries rank below
+    every scored one.
   - Always sanity-check **correlation-with-benchmark**: a config with high CORR but
     correlation-with-benchmark near 1.0 is re-expressing the benchmark and will earn
     little AIMC.
