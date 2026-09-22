@@ -192,18 +192,9 @@ The standard Everesteer plot is **cumulative CORR of the best model, plus its ro
 correlation with the published benchmark, over expeds**, built from the run's
 out-of-sample predictions.
 
-If the example-scripts repo ships a plotting helper, use it, e.g.:
-
-```bash
-python plot_experiment.py \
-  --predictions experiments/<name>/predictions/<best_model>.parquet \
-  --benchmark benchmark_futures_train.parquet \
-  --out experiments/<name>/plots/cumulative_corr.png
-```
-
-Otherwise (the fallback always works), a minimal matplotlib equivalent (compute the
-per-exped CORR series, cumsum it, and the rolling correlation-with-benchmark series,
-plot both vs the benchmark line):
+This repo ships no plotting helper, so build it yourself: compute the per-exped CORR
+series and cumsum it, compute the rolling correlation-with-benchmark series, and plot both
+against the benchmark line. A minimal matplotlib version:
 
 ```python
 import matplotlib
