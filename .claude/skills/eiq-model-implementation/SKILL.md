@@ -173,7 +173,43 @@ Run `run_validation_diagnostics` (MCP) for the platform's own read on feature ex
 
 The round score is a weighted blend of CORR, AIMC and NCORR, bounded per round. Call `explain_scoring` for the live weights; don't hardcode which term dominates. **AIMC** and **NCORR** both mean a merely-accurate model that re-expresses what the reference already says pays little on those components. On a money event the round score is then mapped to a payout through a **bounded** function, `A * tanh(payout_factor * score / A)`; `get_event_staking` reports the `payout_factor` and `stake_return_amplitude` each round froze, and `everestapi.scoring.payout` takes both.
 
-**What AIMC is measured against is a per-product setting, and on a hackathon event it works in your favour.** `explain_scoring`'s `metrics.aimc` reports it as your contribution over **the event's own reference benchmark predictions**, not the live crowd consensus the tournament uses. The benchmark is downloadable over `train`, so unlike the tournament case you *can* build a close offline proxy: residualize your predictions against the benchmark per exped, then correlate the residual with the target. Part A of `notebooks/03_neutralization_and_ensembling.ipynb` implements it as `contribution()`. Treat it as a proxy still - the real number comes back after you submit - but not as an unobservable.
+**What AIMC is measured against is a per-product setting, and on a hackathon event it works in your favour.** `explain_scoring`'s `metrics.aimc` reports it as your contribution over **the event's own reference benchmark predictions**, not the live crowd consensus the tournament uses. The benchmark is downloadable over `train`, so unlike the tournament case you *can* build a close offline proxy: residualize your predictions against the benchmark per exped, then correlate the residual with the target. Treat it as a proxy still - the real number comes back after you submit - but not as an unobservable.
+
+```python
+from scipy.stats import spearmanr   # plus pandas as pd, numpy as np
+# EXPED and PRIMARY_TARGET come from get_dataset_schema() - read them, don't hardcode.
+
+# The reference to measure against: the mean of the benchmark models over `train`.
+# The validation/live benchmark splits are withheld while an event runs and 404 by
+# design (not an outage, and retrying will not clear it); `train` always works.
+bench = pd.read_parquet(client.download_benchmark("futures", "train")).reset_index()
+bench_cols = [c for c in bench.columns if c not in ("id", EXPED)]
+bench["consensus"] = bench[bench_cols].mean(axis=1)
+holdout = holdout.merge(bench[["id", EXPED, "consensus"]], on=["id", EXPED], how="left")
+
+def neutralize(preds, neutralizers, proportion=1.0):
+    """Remove `proportion` of whatever `neutralizers` explains linearly; return the residual."""
+    y = preds.to_numpy(dtype="float64").reshape(-1, 1)
+    X = np.hstack([neutralizers.to_numpy(dtype="float64"), np.ones((len(neutralizers), 1))])
+    projection = X @ (np.linalg.pinv(X, rcond=1e-6) @ y)
+    return pd.Series((y - proportion * projection).ravel(), index=preds.index)
+
+def contribution(df, pred_col, target_col=PRIMARY_TARGET, bench_col="consensus"):
+    """AIMC proxy, per exped: residualize against the benchmark, correlate with the target."""
+    out = {}
+    for e, g in df.groupby(EXPED):
+        g = g[g[bench_col].notna()]   # an all-NaN exped hands pinv a NaN matrix and raises
+        if len(g) < 3:
+            continue
+        rho, _ = spearmanr(neutralize(g[pred_col], g[[bench_col]]), g[target_col])
+        if np.isfinite(rho):
+            out[e] = rho
+    return pd.Series(out)
+```
+
+Check the merge before you trust the number: if `holdout["consensus"].notna().mean()` is 0, the holdout and the benchmark share no expeds and every `contribution()` reading will be empty. Both come from `train`, so that means the holdout carve is wrong.
+
+Neutralization is **cross-sectional**, so `neutralize` is applied per exped in both uses: against the benchmark for the proxy above, and against a feature block for the exposure fix below.
 
 - **Residualize the target against the benchmark.** Train on the residual of the graded target after projecting out the benchmark series, so the model can only learn what the benchmark misses. Raises AIMC directly, since the benchmark is what AIMC is measured against here.
 - **Neutralize predictions against the benchmark / heavy features.** OLS-project your raw scores onto the benchmark (or a few dominant feature exposures) and subtract the projection. Lowers correlation to the reference, raising AIMC, usually at a modest CORR cost; tune the neutralization proportion. Note NCORR's own neutralization is a spectrally-anchored ridge against a frozen core feature set whose membership is not published, so your own OLS residualization will not reproduce that number.
