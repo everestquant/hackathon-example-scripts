@@ -382,6 +382,13 @@ the `train` tool, metered, and worth previewing before you commit to it:
   CORR. The [`eiq-model-implementation`](.claude/skills/eiq-model-implementation/SKILL.md)
   skill carries the projection helper and the offline AIMC proxy that scores the sweep.
 - Lower-turnover models tend to score better over time.
+- **A negative score on the practice board is not a verdict on your model.** `validation` covers
+  a later period than `train`, separated by a gap, so a sound model can score negative there and
+  positive on a `train` holdout. Never respond by flipping the sign of your predictions: that
+  fits the one period you can see and inverts on the next. Compare the terms instead, since raw
+  CORR negative with **NCORR** near zero or positive means the loss is core-feature exposure
+  rather than your signal, and neutralising that exposure is the legitimate fix. Optimise for a
+  model that generalises across periods, because every round is scored on one you have not seen.
 
 ## Research skills
 
