@@ -85,6 +85,18 @@ def fit(self, X, y, sample_weight=None):
 
 Keep custom models in a participant-owned `models/` directory (e.g. `models/everest_catboost.py`) so model code stays separate from experiment glue.
 
+**That directory does not travel with your pickle unless you say so.** cloudpickle stores a class from an importable module *by reference*: the artifact records `models.everest_catboost.MyEverestModel` by name, and unpickling it anywhere without your repo on the path fails with `ModuleNotFoundError: No module named 'models'`. Register your own modules by value before you dump the `predict` callable:
+
+```python
+import cloudpickle
+import models.everest_catboost
+
+cloudpickle.register_pickle_by_value(models.everest_catboost)   # your code, embedded
+cloudpickle.dump(build_predict(model, feature_cols, missing), fh)
+```
+
+Register only your own modules. Third-party libraries (`catboost`, `lightgbm`, …) stay by reference and come from the sandbox's library set, which is why you pickle against `library_pins`. A class defined inside the same script or notebook that pickles it is `__main__` and already goes by value. The round never catches this: the pickle is store-only there, so an unloadable one costs you only the daily-predictions lane, silently. Check it: load the `.pkl` from a directory outside your repo and call it on a few served rows before you upload.
+
 ## Running it on Everesteer compute
 
 The custom path is a **source string**, not a script upload: you pass `custom_model_fn`, Python source defining `build_model(params) -> estimator`, and the platform's harness loads the data, calls your factory, fits the estimator, and stores the artifact. Your code never downloads anything (the sandbox is network-denied; the harness hands it the data).
