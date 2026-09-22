@@ -39,7 +39,11 @@ tournament reads that research write-ups reach for do not work here, and two of 
   is a constant split marker, not a dimension you can group by. Any advice framed around
   clusters, contract rolls or liquidity tiers is tournament advice and does not apply.
   **Time is the only axis you can slice on.**
-- CV is **exped-purged + embargoed**, which the hosted `train` tool does for you.
+- **CV is exped-purged and embargoed.** The label is a forward return, so a fold boundary
+  leaks unless you drop the training rows whose label window overlaps the test fold, plus a
+  buffer after it. Never plain k-fold. The hosted `train` tool does this inside its own CV,
+  but it fits the **whole** train split, so a holdout you carve from its artifacts is
+  in-sample. Build your own holdout, from your own split of `train`, with your own embargo.
 - **Primary target**: the column `get_dataset_schema` reports as `primary_target`. Never
   hardcode it, and do not assume a horizon from the name: this dataset does not encode one
   there, and no schema field publishes it. Embargo generously instead.
