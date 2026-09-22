@@ -158,7 +158,8 @@ through now and round 1 won't be where you find out your pickle is rejected.
 
 `validation` covers a later period than `train`, with a gap between them, so a sound model can
 score **negative** CORR on the practice board and positive on a holdout cut from `train`. The
-board is display-only, so it costs you nothing.
+board is display-only, so it costs you nothing. That period is simply harder to predict:
+nothing is inverted or sign-flipped to catch you out, so don't price in a trap that isn't there.
 
 Don't flip the sign in response: that fits the one period you can see and inverts on the next.
 Read the terms apart instead. Raw CORR negative with **NCORR** near zero or positive means the

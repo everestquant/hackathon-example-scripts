@@ -379,12 +379,15 @@ the `train` tool, metered, and worth previewing before you commit to it:
 - **Feature neutralization** can add AIMC the same way, by reducing a model's exposure to
   dominant feature groups: project those features out of your predictions **per exped**
   (neutralization is cross-sectional) at a proportion you sweep, and watch what it costs in
-  CORR. The [`eiq-model-implementation`](.claude/skills/eiq-model-implementation/SKILL.md)
+  CORR: a full neutralization that flattens CORR has removed the signal along with the
+  exposure. The [`eiq-model-implementation`](.claude/skills/eiq-model-implementation/SKILL.md)
   skill carries the projection helper and the offline AIMC proxy that scores the sweep.
 - Lower-turnover models tend to score better over time.
 - **A negative score on the practice board is not a verdict on your model.** `validation` covers
   a later period than `train`, separated by a gap, so a sound model can score negative there and
-  positive on a `train` holdout. Never respond by flipping the sign of your predictions: that
+  positive on a `train` holdout. That period is simply harder to predict: nothing is inverted or
+  sign-flipped to catch you out, so do not price in a trap that is not there. Never respond by
+  flipping the sign of your predictions: that
   fits the one period you can see and inverts on the next. Compare the terms instead, since raw
   CORR negative with **NCORR** near zero or positive means the loss is core-feature exposure
   rather than your signal, and neutralising that exposure is the legitimate fix. Optimise for a
