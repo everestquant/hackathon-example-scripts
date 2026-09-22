@@ -53,7 +53,6 @@ event you are actually in. Call it first, and call it again before every submit.
    | [`notebooks/00_setup_and_connect.ipynb`](notebooks/00_setup_and_connect.ipynb) | 2 min | Connected, and the event clock printed in plain words |
    | [`notebooks/01_explore_the_data.ipynb`](notebooks/01_explore_the_data.ipynb) | 5 min | The dataset, expeds, encoded features, the missing sentinel, the target family |
    | [`notebooks/02_train_and_submit.ipynb`](notebooks/02_train_and_submit.ipynb) | 10 min | A baseline, honestly evaluated, submitted to the open round |
-   | [`notebooks/03_neutralization_and_ensembling.ipynb`](notebooks/03_neutralization_and_ensembling.ipynb) | 20 min | Two techniques for once the baseline works |
 
 ## The event
 
@@ -98,6 +97,10 @@ reliably the one that wins round 3.
 `validation` covers a later period than `train`, and a gap separates the two. A sound model can
 score **negative** CORR on the practice board while scoring positive on a holdout cut from
 `train` itself. The practice board is display-only, so a negative score there costs you nothing.
+
+That period is simply harder to predict than the training period. Nothing is inverted,
+rearranged or sign-flipped to catch you out, so do not build a strategy around outsmarting a
+trap that is not there.
 
 Do not flip the sign of your predictions in response. That fits the one period you can see, and
 it inverts on any period where the relationship runs the other way.
@@ -373,7 +376,6 @@ the research skills in [`.claude/skills/`](.claude/skills).
 | [`notebooks/00_setup_and_connect.ipynb`](notebooks/00_setup_and_connect.ipynb) | Install, authenticate, read the event clock and the dataset schema. |
 | [`notebooks/01_explore_the_data.ipynb`](notebooks/01_explore_the_data.ipynb) | Expeds, feature bins and missingness, the target family. Read-only. |
 | [`notebooks/02_train_and_submit.ipynb`](notebooks/02_train_and_submit.ipynb) | A baseline, embargoed evaluation, the board, a round submission. |
-| [`notebooks/03_neutralization_and_ensembling.ipynb`](notebooks/03_neutralization_and_ensembling.ipynb) | Feature neutralization and target ensembling, once the baseline works. |
 | [`example_predictions.csv`](example_predictions.csv) | A format reference for `id,prediction`. Never submit it. |
 | [`install-claude-mcp.sh`](install-claude-mcp.sh) | One-command MCP registration for Claude Code. |
 | [`AGENTS.md`](AGENTS.md) | The agent contract: the loop, the lanes, staking, where to train. |

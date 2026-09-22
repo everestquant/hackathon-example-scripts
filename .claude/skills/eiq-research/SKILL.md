@@ -196,8 +196,7 @@ non-overfit CORR). Then invoke
   **event's own benchmark predictions**, not the crowd consensus the live tournament uses.
   Since that benchmark is downloadable over `train`, the offline proxy is a real one:
   residualize predictions against the benchmark per exped, then correlate the residual
-  with the target (`contribution()` in
-  `notebooks/03_neutralization_and_ensembling.ipynb`). Track
+  with the target. Track
   **correlation-with-benchmark** alongside it as the cheap guard: lower means more
   differentiated. Never pay real CORR to buy differentiation, and label the proxy as a
   proxy - the server's number arrives after you submit.

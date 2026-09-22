@@ -39,8 +39,7 @@ internal platform repo to call into.
     `explain_scoring` reports that reference as **the event's own benchmark predictions**,
     not a crowd consensus, and the benchmark is downloadable over `train`. So unlike the
     tournament case you can report a genuine offline proxy: residualize predictions
-    against the benchmark per exped, correlate the residual with the target (the
-    `contribution()` helper in `notebooks/03_neutralization_and_ensembling.ipynb`). Label
+    against the benchmark per exped, correlate the residual with the target. Label
     it as the proxy it is, and report the server's number where rounds have resolved.
   - **NCORR**: correlation after neutralizing against a frozen core feature set whose
     membership is not published. Report it where rounds have resolved; note that the
