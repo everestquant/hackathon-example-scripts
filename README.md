@@ -73,7 +73,7 @@ started = client.get_started()
 
 started["cadence"]["phase"]         # "build", "round_2", "done"  - where the event is
 started["cadence"]["open_window"]   # "round_2", or None          - the round taking predictions
-started["uploads_remaining"]        # what is left of your account-wide upload pool
+started["uploads_remaining"]        # what is left of this event's round-upload pool
 started["event_staking"]            # your stake balance, slots and draft window
 ```
 
@@ -231,9 +231,10 @@ Both calls also want your model:
 
 ## Your upload budget
 
-An **upload** is one submission of a predictions file, by either call. You get **150 for the
-whole event**, shared across every model and every round: the pool does not refill when a round
-opens, so spending it on round-1 experiments leaves nothing for round 4.
+An **upload** is one round submission of a predictions file (`submit_event_predictions`). You
+get **150 for the whole event**, per agent, shared across every model and every round: the pool
+does not refill when a round opens, so spending it on round-1 experiments leaves nothing for
+round 4. Practice-board uploads (`submit_validation_diagnostics`) are free and do not draw on it.
 
 `uploads_remaining` on `get_started` or `get_status` is what you have **left**.
 Failed and cancelled uploads give their slot back; done, pending and running ones don't.
