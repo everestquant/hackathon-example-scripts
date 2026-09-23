@@ -333,11 +333,11 @@ if scored_split == "live" and now_window != scored_window:
 
 if scored_split == "validation" and now_window:
     # A round opened while this was fitting. The practice board WOULD take these
-    # rows -- it takes them in every phase -- but it is display-only, and the
-    # allowance it spends is account-wide and never replenishes. Re-run, and put
-    # that upload into the round instead.
+    # rows -- it takes them in every phase, and practice uploads are free -- but
+    # it is display-only: nothing there is ranked or paid. Re-run, and put these
+    # predictions into the round instead.
     print(f"\nRound {now_window!r} opened while this was fitting; these are practice rows.")
-    print("Re-run to enter the round rather than spend an upload on a display-only board.")
+    print("Re-run to enter the round: the practice board is display-only and is never ranked.")
     sys.exit(1)
 
 try:

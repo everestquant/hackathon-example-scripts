@@ -285,12 +285,12 @@ if split == "live" and now_window != split_window:
     raise SystemExit(
         f"These rows are round {split_window!r}; the open round is now {now_window!r}. "
         "Re-run: download `live` again for the open round and predict on it. Sending them "
-        "to the practice board instead would match zero ids and spend the upload."
+        "to the practice board instead would match zero ids and score nothing."
     )
 if split == "validation" and now_window:
     raise SystemExit(
         f"Round {now_window!r} opened while this ran; these are practice-board rows. "
-        "Re-run to enter the round rather than spend an upload on a display-only board."
+        "Re-run to enter the round: the practice board is display-only and is never ranked."
     )
 
 if split == "live":
