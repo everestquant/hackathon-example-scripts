@@ -10,7 +10,7 @@
 set -euo pipefail
 
 NAME="eiq"
-BASE_URL="${EIQ_BASE_URL:-https://app.everesteer.ai}"
+BASE_URL="${EIQ_BASE_URL:-https://hackathon.everesteer.ai}"
 
 say() { printf '%s\n' "$*" >&2; }
 

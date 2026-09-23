@@ -27,7 +27,7 @@ This produces:
 Usage:
     pip install "everestapi>=0.3.32" lightgbm pandas pyarrow cloudpickle
     export EIQ_API_KEY=...                 # from onboarding
-    export EIQ_BASE_URL=https://app.everesteer.ai
+    export EIQ_BASE_URL=https://hackathon.everesteer.ai
     python starter_hosted.py
 """
 
@@ -43,7 +43,7 @@ from everestapi import EverestAPI
 
 client = EverestAPI(
     api_key=os.environ["EIQ_API_KEY"],
-    base_url=os.environ.get("EIQ_BASE_URL", "https://app.everesteer.ai"),
+    base_url=os.environ.get("EIQ_BASE_URL", "https://hackathon.everesteer.ai"),
     tournament="futures",
 )
 

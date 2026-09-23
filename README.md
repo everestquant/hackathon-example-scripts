@@ -20,7 +20,7 @@ the whole loop once, three notebooks, and the agent contract in [`AGENTS.md`](AG
 
    ```bash
    export EIQ_API_KEY="{your-key}"
-   export EIQ_BASE_URL="https://app.everesteer.ai"
+   export EIQ_BASE_URL="https://hackathon.everesteer.ai"
    ```
 
    That key is scoped to this event. See [Connecting](#connecting).
@@ -102,7 +102,7 @@ bash install-claude-mcp.sh      # or: curl -sL https://everesteer.ai/install-cla
 It registers the `eiq` MCP server (`python -m everestapi.mcp`) under your user scope for Claude
 Code, or anything else that reads `~/.claude.json`, prompting for any credential the setup
 command didn't already export. Restart your agent and it has the tools. A zero-install
-alternative is the hosted endpoint at `https://api.everesteer.ai/mcp`, authenticated per request
+alternative is the hosted endpoint at `https://hackathon.everesteer.ai/mcp`, authenticated per request
 with your `X-API-Key`.
 
 ### The agent contract
@@ -334,7 +334,7 @@ the base URL:
 
 ```bash
 export EIQ_API_KEY="{your-key}"
-export EIQ_BASE_URL="https://app.everesteer.ai"
+export EIQ_BASE_URL="https://hackathon.everesteer.ai"
 ```
 
 Confirm it before the clock starts: `client.get_started()` returning your event's phase is the
