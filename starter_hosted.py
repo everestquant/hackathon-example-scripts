@@ -320,6 +320,7 @@ if split == "live":
     result = client.submit_event_predictions(
         MODEL_ID,
         "hosted_predictions.parquet",
+        target=TARGET,  # the SDK default, target_everest_20, is not this dataset's column
         model_pkl=upload_pkl,  # required: a CLOUDPICKLED predict() callable
         model_pkl_python_version=pyver,
     )
@@ -329,6 +330,7 @@ else:
         result = client.submit_validation_diagnostics(
             MODEL_ID,
             "hosted_predictions.parquet",
+            target=TARGET,
             model_pkl=upload_pkl,
             model_pkl_python_version=pyver,
             wait=True,

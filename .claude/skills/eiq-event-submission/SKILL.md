@@ -170,7 +170,8 @@ assert len(predictions) == len(scored), "row count must match the served split"
 
 An upload spent on a malformed file is an upload you do not get back, your upload pool
 is a per-**event** total that does not replenish when a new round opens
-(`uploads_remaining` on `get_started`/`get_status`); never hardcode a number.
+(`uploads_remaining` on `get_started`/`get_status`); only round submissions draw on it,
+and practice-board uploads are free. Never hardcode a number.
 
 ## 6. Submit
 
@@ -191,6 +192,8 @@ import sys
 now_cadence = client.get_started().get("cadence") or {}
 now_window = now_cadence.get("open_window")
 pyver = f"{sys.version_info.major}.{sys.version_info.minor}"
+# Name the graded column: the SDK's default, target_everest_20, is not this dataset's.
+TARGET = client.get_dataset_schema()["primary_target"]
 
 if now_cadence.get("phase") == "done":
     ...   # the event is over: nothing is accepted on either lane
@@ -204,13 +207,15 @@ elif split == "validation" and now_cadence.get("diagnostics_maintenance"):
     ...   # the practice board is briefly down for maintenance (503): retry later
 elif split == "live":
     result = client.submit_event_predictions(
-        MODEL_ID, predictions, model_pkl="model.pkl", model_pkl_python_version=pyver,
+        MODEL_ID, predictions, target=TARGET, model_pkl="model.pkl",
+        model_pkl_python_version=pyver,
     )
 else:
     # build, or between rounds: intake_fenced is true here too, but it fences
     # ROUND submissions only. The practice board is open.
     result = client.submit_validation_diagnostics(
-        MODEL_ID, predictions, model_pkl="model.pkl", model_pkl_python_version=pyver,
+        MODEL_ID, predictions, target=TARGET, model_pkl="model.pkl",
+        model_pkl_python_version=pyver,
     )
 ```
 
@@ -276,7 +281,8 @@ assert len(predictions) == len(scored), "row count must match the served split"
 
 pyver = f"{sys.version_info.major}.{sys.version_info.minor}"
 res = client.submit_event_predictions(
-    MODEL_ID, predictions, model_pkl="model.pkl", model_pkl_python_version=pyver,
+    MODEL_ID, predictions, target=client.get_dataset_schema()["primary_target"],
+    model_pkl="model.pkl", model_pkl_python_version=pyver,
 )
 print("submitted", res)
 ```
