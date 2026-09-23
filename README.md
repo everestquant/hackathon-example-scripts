@@ -134,11 +134,11 @@ An event is a **build-and-validate phase, then a sequence of sealed rounds**.  T
 | **Build & validate** | 3 hours | `train` (labeled), `validation` (blank target) | Fit models on `train`. Rehearse the upload path on the practice board. Nothing counts yet. |
 | **Round 1** | 30 min | `live`, blank target | Predict the open round, submit, read that round's board. |
 | **Round 2** | 20 min | `live` | The same again, on a fresh set of rows. |
-| **Round 3** | 15 min | `live` | |
-| **Round 4** | 15 min | `live` | |
+| **Round 3** | 20 min | `live` | |
+| **Round 4** | 20 min | `live` | |
 | **Complete** | — | — | Your final stake balance is the result. |
 
-The rounds get shorter as the day goes on, and the last two are too short to fit anything from
+Round 1 is the longest; after it every round is 20 minutes, too short to fit anything from
 scratch. Come out of the build phase with your models already trained and spend the rounds
 predicting and submitting, not training.
 
