@@ -184,14 +184,22 @@ now = client.get_started()
 now_cadence = now.get("cadence") or {}
 pyver = f"{sys.version_info.major}.{sys.version_info.minor}"
 
-if now_cadence.get("intake_fenced"):
-    # a round is settling: wait rather than spending an upload into a refusal
+if now_cadence.get("phase") == "done":
+    # the event is over: nothing is accepted on either lane
     ...
-elif now_cadence.get("open_window"):
+elif now_cadence.get("open_window") and not now_cadence.get("intake_fenced"):
     result = client.submit_event_predictions(
         MODEL_ID, predictions, model_pkl="model.pkl", model_pkl_python_version=pyver,
     )
+elif now_cadence.get("open_window"):
+    # the round is opening or closing: wait rather than spending an upload into a refusal
+    ...
+elif now_cadence.get("diagnostics_maintenance"):
+    # the practice board is briefly down for maintenance (503): retry later
+    ...
 else:
+    # build, or between rounds: intake_fenced is true here too, but it fences
+    # ROUND submissions only. The practice board is open.
     result = client.submit_validation_diagnostics(
         MODEL_ID, predictions, model_pkl="model.pkl", model_pkl_python_version=pyver,
     )
@@ -279,8 +287,11 @@ Fail loudly (non-zero exit, alert) rather than submit a partial/NaN payload.
 - **Stale round / stale ids**: each round is a disjoint id namespace; rebuild
   `predictions` from a freshly downloaded `live` split every round, never reuse an
   earlier round's frame.
-- **Submitting while intake is fenced**: `cadence.intake_fenced` is briefly true while a
-  round settles and the next opens; wait for it to clear rather than retrying blind.
+- **Misreading `intake_fenced`**: it fences round submissions only. While `open_window`
+  names a round and it is true, the round is opening or closing: wait for it to clear
+  rather than retrying blind. It is also true in build and between rounds, where it says
+  nothing about the practice board, which stays open from event start to end (only
+  `diagnostics_maintenance` closes it, briefly). Do not skip practice uploads because of it.
 - **NaN / inf / constant predictions**: usually a feature-join or inference bug; the
   pre-submission check catches these.
 - **Declaring the wrong `model_pkl_python_version`**: read it from the process that

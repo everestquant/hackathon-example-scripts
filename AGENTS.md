@@ -81,8 +81,11 @@ cache, join or per-era analysis on `(round, era)` and never on the era label alo
 
 `get_status` carries the same `cadence` object and is the cheap poll for "which round is open,
 and are uploads being accepted right now?". `cadence.open_window` names the open round and
-`cadence.intake_fenced` is true while a round settles and the next opens (uploads are briefly
-refused there). Note `live_round` is `null` for a hackathon key **by design**: it means "no live
+`cadence.intake_fenced` fences **round submissions only**: it is true whenever no round's data
+is open (build, between rounds, after the event) and while a named round is opening or closing.
+Wait on it only while `open_window` names a round. The practice board
+(`submit_validation_diagnostics`) accepts uploads from event start to end regardless; only
+`cadence.diagnostics_maintenance` closes it, briefly (retry later). Note `live_round` is `null` for a hackathon key **by design**: it means "no live
 *public tournament* round" and is safe to use as the hackathon/tournament discriminator. It is
 **not** a statement that no event round is open, so branch on `cadence.open_window`.
 
