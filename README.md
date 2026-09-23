@@ -96,7 +96,7 @@ Paste onboarding's **Copy setup command** to export your credentials, then run t
 from the cloned repo:
 
 ```bash
-bash install-claude-mcp.sh      # or: curl -sL https://everesteer.ai/install-claude-mcp.sh | bash
+bash install-claude-mcp.sh      # or: curl -sL https://hackathon.everesteer.ai/install-claude-mcp.sh | bash
 ```
 
 It registers the `eiq` MCP server (`python -m everestapi.mcp`) under your user scope for Claude

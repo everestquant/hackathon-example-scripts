@@ -30,7 +30,7 @@ there. The human-readable account of the day is in the [README](README.md#the-ev
   (`CF_ACCESS_CLIENT_ID` / `CF_ACCESS_CLIENT_SECRET` are only needed against a gated **staging**
   or preview host. Omit them on the public site.)
 - Prefer to drive tools directly? After pasting that setup command, run
-  `bash install-claude-mcp.sh` (or `curl -sL https://everesteer.ai/install-claude-mcp.sh | bash`)
+  `bash install-claude-mcp.sh` (or `curl -sL https://hackathon.everesteer.ai/install-claude-mcp.sh | bash`)
   to register the `eiq` **MCP server** (`python -m everestapi.mcp`) into Claude Code, one
   command, then restart. A hosted HTTP alternative lives at `https://hackathon.everesteer.ai/mcp`
   (per-request `X-API-Key` auth).
