@@ -88,6 +88,10 @@ print(f"  intake fenced      : {cadence.get('intake_fenced')}")
 print(f"  uploads remaining  : {started.get('uploads_remaining')}")
 print(f"  hosted train funded: {started.get('hosted_train_funded')}")
 
+if cadence.get("phase") == "done":
+    print("\nThe event is over (phase 'done'): no round or practice upload is accepted now.")
+    sys.exit(0)
+
 # =====================================================================
 # 2. Schema: read the target and features, never hardcode them
 # =====================================================================
@@ -319,8 +323,16 @@ except Exception as exc:  # noqa: BLE001
 now_cadence = now.get("cadence") or {}
 now_window = now_cadence.get("open_window")
 
-if now_cadence.get("intake_fenced"):
-    print("\nIntake is fenced around a round boundary. Wait for the next phase.")
+if now_cadence.get("phase") == "done":
+    print("\nThe event ended while this was fitting: nothing is accepted any more.")
+    sys.exit(0)
+
+# `intake_fenced` fences ROUND submissions only. It is also true in build, in stake
+# and between rounds, where no round's data is open; the practice board takes
+# uploads there regardless. So it only means "wait" while a round is named.
+if now_window and now_cadence.get("intake_fenced"):
+    print(f"\nRound {now_window!r} is opening or closing and not taking predictions.")
+    print("Wait for the next phase, then re-run.")
     sys.exit(0)
 
 if scored_split == "live" and now_window != scored_window:
@@ -340,6 +352,11 @@ if scored_split == "validation" and now_window:
     print("Re-run to enter the round: the practice board is display-only and is never ranked.")
     sys.exit(1)
 
+if scored_split == "validation" and now_cadence.get("diagnostics_maintenance"):
+    # The one state that closes the practice board, and it is temporary.
+    print("\nThe practice board is briefly down for maintenance. Retry in a few minutes.")
+    sys.exit(0)
+
 try:
     pyver = f"{sys.version_info.major}.{sys.version_info.minor}"
     if scored_split == "live":
@@ -357,6 +374,10 @@ try:
             MODEL_ID, predictions, model_pkl=model_path, model_pkl_python_version=pyver
         )
 except Exception as exc:  # noqa: BLE001
+    if scored_split == "validation" and getattr(exc, "status_code", None) == 503:
+        # Maintenance began after the re-read above. Nothing was spent: retry later.
+        print(f"\nThe practice board is briefly down for maintenance ({exc}). Retry later.")
+        sys.exit(0)
     bail("submit", exc)
 
 print(f"Accepted: {result}")

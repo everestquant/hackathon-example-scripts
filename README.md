@@ -79,9 +79,12 @@ started["event_staking"]            # your stake balance, slots and draft window
 
 One response carries the clock, your budget and the money question. `get_status` returns the
 same `cadence` object on its own and is the cheap poll to run during a round. Two of its other
-fields matter: `seconds_until_next_phase` is your countdown, and `intake_fenced` goes `true` for
-a moment while one round settles and the next opens, during which uploads are refused. Wait it
-out rather than retrying hard.
+fields matter: `seconds_until_next_phase` is your countdown, and `intake_fenced` says whether
+the open round is taking predictions. It fences **round submissions only**: it is `true` in any
+phase where no round's data is open (build, between rounds, after the event), and while a named
+round is still opening or already closing. When `open_window` names a round and
+`intake_fenced` is `true`, wait it out rather than retrying hard. It never closes the practice
+board.
 
 One trap: **`live_round` is `null` on a hackathon key by design.** It means "no live *public
 tournament* round" and is the discriminator between the two products, not a statement that no
@@ -154,7 +157,9 @@ uploading, rather than relying on the job's own scores or uploading the file it 
 [`starter.py`](starter.py) walks through the local path, [`starter_hosted.py`](starter_hosted.py)
 the server one.
 
-The **practice board** is open throughout. `submit_validation_diagnostics` scores you on
+The **practice board** is open from the event's start to its end, in every phase, build
+included; the only exception is a brief maintenance window, which `cadence.diagnostics_maintenance`
+reports (retry later). `submit_validation_diagnostics` scores you on
 `validation`: display-only, but it rehearses the whole upload path, pickle included. Get one
 through now and round 1 won't be where you find out your pickle is rejected.
 

@@ -213,16 +213,21 @@ except Exception as exc:  # noqa: BLE001, a comparison is useful but not require
 cadence = (client.get_started() or {}).get("cadence") or {}
 split = "live" if cadence.get("open_window") else "validation"
 split_window = cadence.get("open_window") if split == "live" else None
-# Uploads are refused (409) while a round settles and the next opens. Say so
-# rather than letting the submit at the end fail for a reason that looks like a
-# bad file -- cadence.intake_fenced is the platform telling you to wait.
-if cadence.get("intake_fenced"):
-    print(
-        f"  NOTE: intake is fenced right now (phase {cadence.get('phase')!r}) -- a round "
-        "is settling. Predictions are still worth building, but the upload will be "
-        "refused until cadence.intake_fenced goes false: poll client.get_status() "
-        "and re-run the submit."
+if cadence.get("phase") == "done":
+    raise SystemExit("The event is over (phase 'done'): no round or practice upload is accepted now.")
+# cadence.intake_fenced fences ROUND submissions only (409 while a round opens or
+# closes). It is also true in build, in stake and between rounds, where the
+# practice board takes uploads regardless, so it only matters while a round is
+# named, and then `live` itself is not served yet (409 cadence_not_open). Say so
+# rather than failing on the download for a reason that looks like a bug.
+if split == "live" and cadence.get("intake_fenced"):
+    raise SystemExit(
+        f"Round {split_window!r} is not taking predictions right now (phase "
+        f"{cadence.get('phase')!r}): `live` is served and uploads are accepted once "
+        "cadence.intake_fenced goes false. Poll client.get_status() and re-run."
     )
+if split == "validation" and cadence.get("diagnostics_maintenance"):
+    print("  NOTE: the practice board is briefly down for maintenance; retry the submit later.")
 print(f"Downloading the served {split} split and predicting locally...")
 served = pd.read_parquet(client.download_dataset(split=split))
 served_ids = served["id"] if "id" in served.columns else served.index   # the id IS the index
@@ -276,10 +281,12 @@ now_cadence = (client.get_started() or {}).get("cadence") or {}
 now_window = now_cadence.get("open_window")
 pyver = f"{sys.version_info.major}.{sys.version_info.minor}"
 
-if now_cadence.get("intake_fenced"):
+if now_cadence.get("phase") == "done":
+    raise SystemExit("The event ended while this ran: nothing is accepted any more.")
+if now_window and now_cadence.get("intake_fenced"):
     raise SystemExit(
-        f"Intake is fenced (phase {now_cadence.get('phase')!r}): a round is settling and "
-        "uploads are refused. Poll client.get_status() and re-run the submit."
+        f"Round {now_window!r} is opening or closing (phase {now_cadence.get('phase')!r}) "
+        "and not taking predictions. Poll client.get_status() and re-run the submit."
     )
 if split == "live" and now_window != split_window:
     raise SystemExit(
@@ -292,6 +299,11 @@ if split == "validation" and now_window:
         f"Round {now_window!r} opened while this ran; these are practice-board rows. "
         "Re-run to enter the round: the practice board is display-only and is never ranked."
     )
+if split == "validation" and now_cadence.get("diagnostics_maintenance"):
+    raise SystemExit(
+        "The practice board is briefly down for maintenance. Nothing was uploaded: "
+        "re-run the submit in a few minutes."
+    )
 
 if split == "live":
     print(f"Round {split_window} is open and these are its rows: submitting to the round.")
@@ -303,12 +315,20 @@ if split == "live":
     )
 else:
     print("These are practice-board rows: submitting to the practice board.")
-    result = client.submit_validation_diagnostics(
-        MODEL_ID,
-        "hosted_predictions.parquet",
-        model_pkl=upload_pkl,
-        model_pkl_python_version=pyver,
-        wait=True,
-    )
+    try:
+        result = client.submit_validation_diagnostics(
+            MODEL_ID,
+            "hosted_predictions.parquet",
+            model_pkl=upload_pkl,
+            model_pkl_python_version=pyver,
+            wait=True,
+        )
+    except Exception as exc:  # noqa: BLE001
+        if getattr(exc, "status_code", None) != 503:
+            raise
+        raise SystemExit(
+            f"The practice board is briefly down for maintenance ({exc}). "
+            "Re-run the submit in a few minutes."
+        ) from exc
 print(f"Scored: {result}")
 print("Check your standing with client.get_diagnostics_leaderboard().")
