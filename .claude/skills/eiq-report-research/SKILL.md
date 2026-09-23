@@ -91,9 +91,10 @@ Build the per-exped stability series (sharpe, drawdown) yourself from the out-of
 predictions on disk. This skill's numbers should trace back to files in your own
 `experiments/` folder wherever possible.
 
-Pick the **best model by CORR** (recent-window CORR breaks ties). CORR is the
-experiment-selection metric, since it's the one number you can compute precisely
-offline. Use correlation-with-benchmark as the differentiation check and per-exped
+Pick the **best model by the offline round score**: the live `explain_scoring` weights
+applied to holdout CORR and the `contribution()` AIMC proxy (recent-window CORR breaks
+ties). Don't pick on CORR alone. It is the term you can compute most precisely offline,
+but the board ranks on the blend. Use correlation-with-benchmark as the differentiation check and per-exped
 stability (plus resolved-round AIMC where available) to confirm the edge isn't a single
 lucky exped. A high-CORR model with high correlation-with-benchmark is *not* clearly the
 winner, flag it as a likely benchmark-echo and note that its AIMC, once a round
@@ -109,7 +110,7 @@ Use this template. Keep prose tight; every section earns its place.
 **Date:** YYYY-MM-DD
 **Event dataset:** futures
 **Target:** <the schema's primary_target>
-**Selection metric:** CORR, with correlation-with-benchmark as the differentiation guard  ·  **Round score:** weighted CORR+AIMC+NCORR blend, bounded per round (see `explain_scoring` for live weights)
+**Selection metric:** offline round score (`explain_scoring` weights on CORR + AIMC proxy), with correlation-with-benchmark as the differentiation guard  ·  **Round score:** weighted CORR+AIMC+NCORR blend, bounded per round (see `explain_scoring` for live weights)
 
 ## Abstract
 Two to four sentences: what was tested, the headline result, and the decision
