@@ -172,9 +172,9 @@ holdout = train[train["exped"].isin(tail)]
 metrics = EverestAPI.evaluate(preds, holdout, target=TARGET)
 ```
 
-A healthy futures model lands at a **small positive** CORR. On the order of a few hundredths. Both tails are red flags:
+A healthy futures model usually lands at a **small positive** CORR, on the order of a few hundredths. But one holdout is a noisy read, and the two tails mean very different things:
 
-- **CORR near zero or negative:** the model isn't learning, or features/target are misaligned. Check the index join and the feature filter.
+- **CORR near zero or negative:** common, and not a verdict on its own. Per-exped CORR swings widely, and some periods are simply harder to predict than others. It happens often on the `validation` practice board too (see the negative-score tip in `AGENTS.md`). Rule out the mechanical causes first, a broken index join or a feature filter that dropped the columns you meant, and then look at whether the edge holds across both halves of the holdout and how CORR compares with NCORR. Never flip the sign of your predictions to fix it: that fits the one period you can see.
 - **CORR suspiciously high** (e.g. an order of magnitude above what the published benchmark and the leaderboard achieve): assume **leakage** until proven otherwise. The usual culprits are evaluating on training rows, leaking the target through a derived column, or an index that lets future expeds bleed in.
 
 Run `run_validation_diagnostics` (MCP) for the platform's own read on feature exposure and per-exped behaviour before trusting a number.
