@@ -110,11 +110,16 @@ Execute round one exactly as the design specified.
 
 - Downsample: run on a **subset of expeds**, not the full history. The point is to rank
   configs cheaply, not to measure final performance.
-- Prefer `train(model=<preset>, gpu="CPU")` for templated configs; reserve
+- Prefer `train(model=<preset>, features="all", gpu="CPU")` for templated configs; reserve
   `train(model="custom", ...)` for the variants that need it. Over MCP, the `train`
-  tool's `dry_run=true` previews cost before you launch (the Python client's `train()`
-  has no `dry_run` parameter). Poll with `get_job_status`; pull artifacts with
+  tool's `dry_run=true` validates the call before you launch (the Python client's
+  `train()` has no `dry_run` parameter). Poll with `get_job_status`; pull artifacts with
   `get_model_download_url`.
+- **Use the server to fit, and recompute everything else yourself.** Pass a `train_filter`
+  cutoff so no job sees your holdout, score the downloaded model on that holdout yourself,
+  and wrap it in your own `predict()` before any upload. The job's own CV metrics are not
+  what you rank on. `eiq-experiment-design` has the cutoff; `starter_hosted.py` has the
+  scorer and wrapper.
 - Score every config the same way: download the benchmark with
   `download_benchmark("futures", "train")` and evaluate predictions against it, naming it
   by the column you actually find in that frame. (`get_benchmarks` is a tournament read

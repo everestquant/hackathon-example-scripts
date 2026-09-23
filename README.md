@@ -147,8 +147,12 @@ round can be paused or extended: see [The toolkit](#the-toolkit).
 Three hours, no round open. Spend it fitting models, and build more than one: rounds cover
 different periods, so round 1's winner is not reliably round 3's.
 
-Train on hosted compute using the platform call train. You have $5 credit, a CPU training of a LightGBM is well under $1. You can also train on your own hardware. [`starter.py`](starter.py) walks through the local training path,
-[`starter_hosted.py`](starter_hosted.py) the hosted one.
+Train on Everesteer's servers with the `train` call. You have $5 of credit, and a CPU LightGBM
+run costs a few cents. You can also train on your own hardware. Either way, use the server only
+to fit: score the model on your own holdout, and wrap it in your own `predict()` before
+uploading, rather than relying on the job's own scores or uploading the file it returns.
+[`starter.py`](starter.py) walks through the local path, [`starter_hosted.py`](starter_hosted.py)
+the server one.
 
 The **practice board** is open throughout. `submit_validation_diagnostics` scores you on
 `validation`: display-only, but it rehearses the whole upload path, pickle included. Get one
@@ -337,7 +341,7 @@ To let an agent drive the tools directly, see [The toolkit](#the-toolkit).
 | Path | What it is |
 |---|---|
 | [`starter.py`](starter.py) | The whole event loop in one script: orient, download, fit locally, submit to the right place. |
-| [`starter_hosted.py`](starter_hosted.py) | The same baseline trained on hosted compute, then predicted locally and submitted. |
+| [`starter_hosted.py`](starter_hosted.py) | The same baseline fitted on Everesteer's servers, then scored on your own holdout, wrapped and submitted locally. |
 | [`notebooks/00_setup_and_connect.ipynb`](notebooks/00_setup_and_connect.ipynb) | Install, authenticate, read the event clock and your budgets. |
 | [`notebooks/01_explore_the_data.ipynb`](notebooks/01_explore_the_data.ipynb) | Expeds, feature bins and missingness, the target family. Read-only. |
 | [`notebooks/02_train_and_submit.ipynb`](notebooks/02_train_and_submit.ipynb) | A baseline, embargoed evaluation, the board, a round submission. |

@@ -116,26 +116,66 @@ client.download_dataset(universe="futures", split="train", output_path="train.pa
 #    item) and right for tree models. max_hours caps at 4.0 and the platform enforces
 #    a hard runtime ceiling (~45 min), so keep jobs tight.
 CUSTOM_FN = '''
+import numpy as np
+
+
+class MaskMissing:
+    """Turn the dataset's missing value into NaN before the learner sees it.
+
+    The harness fills NaN with 0.0 and passes the missing value (-1) through
+    as an ordinary number, so without this the learner treats "missing" as a
+    bin below the lowest real one. Masking inside the model means fit and
+    predict always see the same thing, wherever the model later runs.
+    """
+
+    def __init__(self, learner, missing):
+        self.learner, self.missing = learner, missing
+
+    def _mask(self, X):
+        X = np.array(X, dtype="float64")  # a copy: never edit the harness's array
+        X[X == self.missing] = np.nan
+        return X
+
+    def fit(self, X, y, sample_weight=None):
+        self.learner.fit(self._mask(X), y, sample_weight=sample_weight)
+        return self
+
+    def predict(self, X):
+        return self.learner.predict(self._mask(X))
+
+
 def build_model(params):
     # Everything must be defined or imported INSIDE this source string,
-    # the sandbox cannot see your local files. Paste your model class here.
-    from catboost import CatBoostRegressor
-    return CatBoostRegressor(**params, verbose=0)
+    # the sandbox cannot see your local files.
+    from catboost import CatBoostRegressor   # handles NaN natively
+    params = dict(params)
+    missing = params.pop("missing", -1.0)    # passed in from the schema below
+    return MaskMissing(CatBoostRegressor(**params, verbose=0), missing)
 '''
-# Preview cost first over MCP: the `train` TOOL takes dry_run=true, which resolves
-# defaults and returns estimated_hold_cents without reserving credits or launching
-# anything. The Python client's train() has no dry_run parameter, so from here you
-# launch directly:
+schema = client.get_dataset_schema()
+missing = (schema.get("feature_encoding") or {}).get("missing", -1.0)
+
+# The fit must stop before your embargo and holdout: without train_filter a job
+# fits the whole train split, and every holdout score is in-sample.
+# FIRST_EMBARGO_EXPED is the first exped of the embargo in front of your holdout.
 job = client.train(model="custom", custom_model_fn=CUSTOM_FN,
-                   params={"iterations": 600, "depth": 6},
+                   features="all",                  # the default "small" is a prefix here
+                   train_filter={"exped": {"cutoff_lt": FIRST_EMBARGO_EXPED}},
+                   params={"iterations": 600, "depth": 6, "missing": missing},
                    gpu="A100", max_hours=2.0)
 
-# 3. Wait, then retrieve the fitted artifact.
+# 3. Wait, then retrieve the fitted artifact and the record of what it was fit on.
 result = client.wait_for_job(job["job_id"])
 client.download_model(job["job_id"], output_path="model.pkl")
+manifest = result["feature_manifest"]   # ordered features + the harness's preprocessing
+
+# 4. Score it on YOUR holdout, and wrap it before uploading. Do not select on the
+#    job's own CV metrics, and never upload model.pkl as downloaded: it has come
+#    back as a bare estimator, which the upload gate refuses. starter_hosted.py's
+#    make_scorer() and build_predict() do both, and accept either artifact shape.
 ```
 
-Via MCP the equivalents are `train` (same `custom_model_fn` source-string argument), `get_job_status`, `get_job_log`, and `get_model_download_url`; check budget first with `get_compute_credits`, fetch column names with `get_dataset_schema`, and use `download_dataset` for the parquet. `train` runs on metered GPU/CPU. The `CPU` tier is cheapest for anything templated; use `train(..., dry_run=true)` to preview the cost before you commit.
+Via MCP the equivalents are `train` (same `custom_model_fn` source-string argument), `get_job_status`, `get_job_log`, and `get_model_download_url`; check budget first with `get_compute_credits`, fetch column names with `get_dataset_schema`, and use `download_dataset` for the parquet. `train` runs on metered GPU/CPU, and the `CPU` tier is cheapest for tree models. Over MCP, `train(..., dry_run=true)` validates the call and resolves its defaults before you launch. Its `estimated_hold_cents` is a flat worst-case reservation for the tier, not a per-config cost.
 
 Two contract details that bite:
 

@@ -159,7 +159,7 @@ experiments/<experiment_name>/
     r1.csv                 # holdout metrics for every config in round 1
     r2.csv
   predictions/             # saved holdout/live prediction parquets per promoted config
-  best.pkl                 # winning model artifact (downloaded from its compute job)
+  best.pkl                 # winning model as the job returned it: wrap it before any upload
 ```
 
 `experiment.md` is the lab notebook. It opens with the hypothesis and the declared baseline,
@@ -373,4 +373,6 @@ not a metrics dump: the hypothesis, the path the rounds took, what won and *why*
 table (with the benchmark baseline row and the per-exped stability numbers), and the explicit
 stopping decision. Then submit the confirmed winner with `submit_event_predictions` (via
 `eiq-event-submission`) if entering the open round is the goal, so a single session can carry
-an idea from clarification all the way to a submitted model.
+an idea from clarification all the way to a submitted model. Upload your own wrapped
+`predict()`, never `best.pkl` as the job returned it: that file has come back as a bare
+estimator, which the upload gate refuses.
