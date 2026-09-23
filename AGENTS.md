@@ -126,7 +126,10 @@ settles on nothing. This happened on a live money event: one staked model never 
 submission and settled at exactly $0.
 
 **Re-read `get_started` immediately before every submit.** A round can open or close while you
-were fitting, and the lane follows the clock, not your intent.
+were fitting. Read it as a guard, not as the decision: the lane follows the split you downloaded
+and the round it came from, and the fresh read only says whether those rows are still
+submittable. When they are not, re-run on the split now served; never redirect them at the other
+lane.
 
 **A model must exist before you can submit for it.** The platform never auto-creates one:
 submitting to a name it does not know comes back as a 404 telling you to create it first

@@ -188,13 +188,23 @@ print(f"Holdout CORR {corr.mean():+.4f} | std {corr.std():.4f} | "
       f"sharpe {corr.mean() / corr.std():.2f} | {(corr > 0).mean():.0%} of expeds positive")
 
 # The benchmark on the same rows, scored the same way, so the comparison is
-# like-for-like. Only its `train` split is served during an event.
+# like-for-like. Only its `train` split is served during an event. A row is the
+# same row only when its id AND its exped agree: a benchmark built from an older
+# train file can share ids with this one on different expeds, and an id-only
+# join would quietly score it against the wrong rows.
 try:
     bench = pd.read_parquet(client.download_benchmark("futures", "train"))
-    bench_mean = bench.drop(columns=[EXPED], errors="ignore").mean(axis=1).rename("benchmark")
+    bench_mean = pd.DataFrame({"benchmark": bench.drop(columns=[EXPED]).mean(axis=1),
+                               "bench_exped": bench[EXPED]})
     rows = holdout.join(bench_mean, how="inner")
-    print(f"Benchmark    {per_exped_corr(rows, 'benchmark').mean():+.4f} "
-          f"on {len(rows):,} of {len(holdout):,} holdout rows")
+    rows = rows[rows["bench_exped"] == rows[EXPED]]
+    if len(rows) < 0.5 * len(holdout):
+        print(f"Benchmark comparison skipped: only {len(rows):,} of {len(holdout):,} holdout "
+              "rows match on id and exped, so the benchmark was built from a different "
+              "train file than the one served now.")
+    else:
+        print(f"Benchmark    {per_exped_corr(rows, 'benchmark').mean():+.4f} "
+              f"on {len(rows):,} of {len(holdout):,} holdout rows")
 except Exception as exc:  # noqa: BLE001, a comparison is useful but not required
     print(f"Benchmark comparison unavailable: {exc}")
 
@@ -310,6 +320,7 @@ if split == "live":
     result = client.submit_event_predictions(
         MODEL_ID,
         "hosted_predictions.parquet",
+        target=TARGET,  # the SDK default, target_everest_20, is not this dataset's column
         model_pkl=upload_pkl,  # required: a CLOUDPICKLED predict() callable
         model_pkl_python_version=pyver,
     )
@@ -319,6 +330,7 @@ else:
         result = client.submit_validation_diagnostics(
             MODEL_ID,
             "hosted_predictions.parquet",
+            target=TARGET,
             model_pkl=upload_pkl,
             model_pkl_python_version=pyver,
             wait=True,
