@@ -206,10 +206,22 @@ almost nothing, erring short is the leak:
 
 ```python
 EMBARGO = 20  # a deliberately wide round number, NOT a horizon read off the data
-tail = train["exped"].unique()[-100:]
-holdout = train[train["exped"].isin(tail)]
+# train's exped tokens are zero-padded, so their string order is their time order.
+ordered = sorted(train["exped"].unique())
+holdout_expeds = ordered[-100:]
+fit_rows = train[train["exped"] < ordered[-100 - EMBARGO]]   # stops EMBARGO expeds short
+holdout = train[train["exped"].isin(holdout_expeds)].dropna(subset=[TARGET])
 
-metrics = EverestAPI.evaluate(preds, holdout, target=TARGET)
+m = MyEverestModel().fit(fit_rows[feats], fit_rows[TARGET])
+holdout = holdout.assign(prediction=m.predict(holdout[feats]))
+
+# CORR is computed within each exped, then averaged. Don't use EverestAPI.evaluate for
+# this: it pools every row into one correlation, which is not the per-exped CORR the
+# board scores.
+corr = holdout.groupby("exped")[["prediction", TARGET]].apply(
+    lambda g: g["prediction"].rank().corr(g[TARGET].rank())
+).dropna()
+print(f"CORR {corr.mean():+.4f} | std {corr.std():.4f} | {(corr > 0).mean():.0%} of expeds positive")
 ```
 
 A healthy futures model usually lands at a **small positive** CORR, on the order of a few hundredths. But one holdout is a noisy read, and the two tails mean very different things:
