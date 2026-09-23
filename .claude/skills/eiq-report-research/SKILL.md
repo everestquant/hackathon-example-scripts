@@ -94,8 +94,8 @@ predictions on disk. This skill's numbers should trace back to files in your own
 Pick the **best model by the offline round score**: the live `explain_scoring` weights
 applied to holdout CORR and the `contribution()` AIMC proxy (recent-window CORR breaks
 ties). Don't pick on CORR alone. It is the term you can compute most precisely offline,
-but the board ranks on the blend. Use correlation-with-benchmark as the differentiation check and per-exped
-stability (plus resolved-round AIMC where available) to confirm the edge isn't a single
+but the board ranks on the blend. Use correlation-with-benchmark as the differentiation
+check and per-exped stability (plus resolved-round AIMC where available) to confirm the edge isn't a single
 lucky exped. A high-CORR model with high correlation-with-benchmark is *not* clearly the
 winner, flag it as a likely benchmark-echo and note that its AIMC, once a round
 resolves, may disappoint.
