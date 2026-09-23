@@ -86,18 +86,25 @@ refused there). Note `live_round` is `null` for a hackathon key **by design**: i
 *public tournament* round" and is safe to use as the hackathon/tournament discriminator. It is
 **not** a statement that no event round is open, so branch on `cadence.open_window`.
 
-**Train hosted first**. In a hackathon your event compute grant is already spendable
-(`get_started` reports `hosted_train_funded: true` and puts `train` in `next_actions` when it
-is), so the recommended baseline path is the platform `train` tool: server-side exped-purged CV
-and the model `.pkl` back. See [`starter_hosted.py`](starter_hosted.py) for the end-to-end loop
-(train hosted → predict locally on the served split → submit). A CPU LightGBM baseline holds
-well under $1. Train locally ([`starter.py`](starter.py)) when you prefer your own hardware or
-the grant is exhausted.
+**Fit on the server, then recompute everything yourself.** In a hackathon your event compute
+grant is already spendable (`get_started` reports `hosted_train_funded: true` and puts `train`
+in `next_actions` when it is), so the platform `train` tool is the cheap way to fit: a CPU
+LightGBM job costs a few cents. Use it as the engine that does the fitting, and nothing more.
+Every number you act on and every file you upload should come from your own code:
 
-Two things to know about the hosted CV numbers before you lean on them: it reports the CV
-metrics it can compute for your job, which may not include every term the board scores you on,
-and it fits the **whole** train split, so a "holdout" you carve from those artifacts yourself
-is in-sample. Build any honest holdout from your own split of the labeled train data.
+- **Keep your holdout out of the fit.** A job fits the **whole** train split unless told
+  otherwise, so a holdout carved from its artifacts afterwards is in-sample. Pass
+  `train_filter={"exped": {"cutoff_lt": <first exped of your embargo>}}`.
+- **Score it yourself.** Predict that holdout locally and compute CORR, the AIMC proxy and the
+  round score from the live `explain_scoring` weights. Don't select on the job's own CV
+  metrics: they are measured inside its folds, may not include every term the board scores,
+  and its AIMC is an estimate against a proxy.
+- **Wrap it yourself.** Never upload the `.pkl` a job returns as-is. Wrap it in your own
+  cloudpickled `predict()` (see the artifact rules below) that reproduces the preprocessing in
+  the job's `feature_manifest`.
+
+[`starter_hosted.py`](starter_hosted.py) does all three, end to end. Train locally
+([`starter.py`](starter.py)) when you prefer your own hardware or the grant is exhausted.
 
 **Submit a round with `submit_event_predictions(...)`, not `submit_validation_diagnostics(...)`.**
 There are two upload lanes and they are not interchangeable:
@@ -152,7 +159,10 @@ indexed by instrument id. Use `cloudpickle.dump`, never `pickle.dump`. A bare es
 or a dict wrapping one, comes back as
 `400 "Everesteer runs one model shape: a cloudpickled callable."` The server rejects the
 upload without a pickle at all. Select features **by name** inside `predict` so the
-artifact survives a change to the served column set.
+artifact survives a change to the served column set. That includes a model a `train` job
+returned: wrap it before uploading rather than sending the downloaded file. The tool
+descriptions say a job returns a submit-ready callable, but artifacts have come back as bare
+estimators, which this rule refuses, so a wrapper that accepts either shape is the safe path.
 
 **Is the pickle executed?** Not for your round score, and the two statements you will see are
 both true, of different things. On these lanes the artifact is **store-only**: the board scores
@@ -178,8 +188,10 @@ libraries that version's sandbox runs: `pip install -r <url>` before you pickle,
 against the environment that will unpickle you. Separately from the "unsupported version" rule
 above, the *declaration* is verified against the pickle's own embedded bytecode where that is
 readable: a provable mismatch is recorded and, wherever mismatch enforcement is switched on,
-refused at upload with both versions named. For a platform-trained model, `get_job_status`
-reports `trainer_python_version`, declare that job's `major.minor` when you upload its `.pkl`.
+refused at upload with both versions named. For a platform-trained model, declare the
+interpreter that saved the file you actually upload. Once you have wrapped the job's model in
+your own `predict()`, that is your own interpreter, not the trainer's; `get_job_status`'s
+`trainer_python_version` only applies to a `.pkl` uploaded exactly as the job returned it.
 
 **What the boards rank on** is described in [What you're optimizing](#what-youre-optimizing).
 Operationally: read `rank_metric` on any leaderboard response for what that board was actually
@@ -299,8 +311,9 @@ That changes the shape of a good run:
   give up the only thing that moves you: one fewer scored round to raise that mean with and, on
   a money event, a round whose stake never settles, so nothing compounds into the next round's
   allocation. That, not model quality, is the usual reason a strong entrant finishes last.
-- Scout cheap on `gpu="CPU"` with a small feature set across several ideas before scaling up
-  only the one that survives.
+- Scout cheap on `gpu="CPU"` across several ideas before scaling up only the one that
+  survives. Pass `features` explicitly: its default, `"small"`, becomes an alphabetical prefix
+  of the feature list on a dataset that publishes a single set.
 - **Optimise the round score, not one term of it.** `explain_scoring` gives the live weights; a
   model tuned on a single term leaves the rest untouched. Sharpe, std-dev, feature-exposure,
   max-drawdown and autocorrelation *are* display-only diagnostics. Those do not affect rank.
@@ -358,10 +371,20 @@ the `train` tool, metered, and worth previewing before you commit to it:
   custom model.
 - Seed via `params` (e.g. `params={"seed": 7}` for lightgbm, `{"random_state": 7}` for sklearn
   presets). A top-level `seed=` argument is rejected.
-- Preview cost before paying, **over MCP**: the `train` tool's `dry_run=true` validates the
-  call, resolves defaults, and returns a cost estimate (`estimated_hold_cents`,
-  `max_runtime_seconds`, resolved `gpu`/`model`/`universe`) without reserving credits or
-  launching anything. The Python client's `train()` has no `dry_run` parameter.
+- **Always pass `features`**, as `"all"` or an explicit list. Left out, it defaults to
+  `"small"`, which on a dataset that publishes only `all` is an alphabetical prefix of the
+  feature list, not a curated subset.
+- **Presets bring their own preprocessing.** They fill NaN with `0.0` and pass the missing
+  value (`-1`) to the model as an ordinary number, so a preset learns `-1` as a bin below the
+  lowest real one. To fit with your own missing-value handling, use `model="custom"` and do it
+  inside `build_model`. Either way, feed the model at predict time exactly what it was fit on:
+  the job's `feature_manifest` records it.
+- **Over MCP**, the `train` tool's `dry_run=true` validates the call and resolves its defaults
+  (check the resolved `features`) without reserving credits or launching anything. Its
+  `estimated_hold_cents` is a flat worst-case reservation, the same for every job on a GPU
+  tier, so it can't compare configs. A dry run also doesn't check whether hosted compute is
+  currently on, so a call that passes can still be refused when you launch it. The Python
+  client's `train()` has no `dry_run` parameter.
 
 ## Tips
 
