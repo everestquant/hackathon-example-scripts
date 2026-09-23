@@ -23,7 +23,7 @@ It produces:
 Usage:
     pip install "everestapi>=0.3.32" lightgbm scikit-learn pandas pyarrow cloudpickle
     export EIQ_API_KEY=...                  # from your event onboarding
-    export EIQ_BASE_URL=https://app.everesteer.ai
+    export EIQ_BASE_URL=https://hackathon.everesteer.ai
     python starter.py
 
 Connecting: production needs only your API key. A staging or preview host also
@@ -47,7 +47,7 @@ from everestapi import EverestAPI
 
 client = EverestAPI(
     api_key=os.environ["EIQ_API_KEY"],
-    base_url=os.environ.get("EIQ_BASE_URL", "https://app.everesteer.ai"),
+    base_url=os.environ.get("EIQ_BASE_URL", "https://hackathon.everesteer.ai"),
     tournament="futures",
 )
 

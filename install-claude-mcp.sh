@@ -2,7 +2,7 @@
 # Register the Everesteer "eiq" MCP server into Claude Code (or any agent that
 # reads ~/.claude.json), so your agent can drive the tournament tools directly.
 #
-#   curl -sL https://everesteer.ai/install-claude-mcp.sh | bash
+#   curl -sL https://hackathon.everesteer.ai/install-claude-mcp.sh | bash
 #
 # Paste onboarding's "Copy setup command" first (it exports your EIQ_API_KEY
 # and base URL); this script reads those from the environment and prompts via
@@ -10,7 +10,7 @@
 set -euo pipefail
 
 NAME="eiq"
-BASE_URL="${EIQ_BASE_URL:-https://app.everesteer.ai}"
+BASE_URL="${EIQ_BASE_URL:-https://hackathon.everesteer.ai}"
 
 say() { printf '%s\n' "$*" >&2; }
 
