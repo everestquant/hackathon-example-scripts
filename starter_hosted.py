@@ -2,20 +2,26 @@
 """
 Everesteer Hackathon, Hosted-Training Starter
 
-A LightGBM baseline trained on Everesteer's hosted compute via the platform
-`train` tool: the platform loads the data, runs exped-purged/embargoed
-cross-validation, computes canonical tournament metrics (CORR / AIMC estimate
-/ NCORR), and returns the model .pkl + a feature manifest. In a hackathon
-your event compute grant is already spendable (`get_started` reports
-`hosted_train_funded`). A CPU LightGBM baseline holds well under $1.
+A LightGBM baseline fitted on Everesteer's servers with the platform `train`
+call, then checked and packaged by THIS script. The server is used as the
+engine that does the fitting, and nothing else: every number you act on and
+every file you upload is produced here, from your own code.
 
-Submission uses the always-correct path: download the .pkl, predict LOCALLY
-on whichever split the platform is currently scoring, and submit that.
-(The job's own predictions artifact is scored against the tree the trainer
-read. Predicting on the served split yourself can never id-mismatch.)
+  - The fit stops before your holdout. A `train` job fits the whole train
+    split unless told otherwise, which would put your holdout inside the fit.
+    `train_filter` ends it at the first exped of the embargo instead.
+  - The score is computed here, on that holdout, not read off the job. The
+    job's own CV numbers are measured differently and its AIMC is an estimate
+    against a proxy, so they are not what the board will say.
+  - The upload is wrapped here. What a job hands back has not always been the
+    one shape the upload gate accepts, so this script never uploads it as-is.
+
+In a hackathon your event compute grant is already spendable (`get_started`
+reports `hosted_train_funded`). A CPU LightGBM job costs a few cents.
 
 This produces:
-  - hosted_model.pkl:              the platform-trained model
+  - hosted_model.pkl:              the model file the job returned, as downloaded
+  - hosted_model_callable.pkl:     the wrapped predict() callable that gets uploaded
   - hosted_predictions.parquet:    predictions file (id + prediction)
 
 Usage:
@@ -41,6 +47,11 @@ client = EverestAPI(
     tournament="futures",
 )
 
+HOLDOUT_EXPEDS = 100   # the tail of train, kept out of the fit and scored here
+EMBARGO = 20           # expeds dropped in front of the holdout. A wide round number:
+                       # the target's horizon is not published, so err wide.
+EXPED = "exped"
+
 # =====================================================================
 # 1. Check the budget (hackathon grants are spendable immediately)
 # =====================================================================
@@ -54,20 +65,41 @@ if available <= 0:
     )
 
 # =====================================================================
-# 2. Launch the hosted training job
+# 2. Carve the holdout, and work out where the fit has to stop
 # =====================================================================
-# Mirrors the local starter's LightGBM config. gpu="CPU" is the cheapest
-# tier and the right choice for tree models; the platform runs exped-purged
-# CV with the tournament embargo: no leakage bookkeeping on your side.
-print("Launching hosted train (LightGBM, CPU)...")
+# The graded column comes from the schema: it differs between datasets and is
+# not necessarily the first entry in `targets`.
+schema = client.get_dataset_schema() or {}
+TARGET = schema.get("primary_target")
+if not TARGET:
+    raise SystemExit("The schema declares no primary_target - refusing to guess.")
+
+train = pd.read_parquet(client.download_dataset(split="train"))
+# train's exped tokens are zero-padded, so their string order is their time order,
+# which is also the order the server's cutoff compares on.
+ordered = sorted(train[EXPED].unique())
+holdout_expeds = set(ordered[-HOLDOUT_EXPEDS:])
+FIRST_EMBARGO_EXPED = ordered[-(HOLDOUT_EXPEDS + EMBARGO)]
+holdout = train[train[EXPED].isin(holdout_expeds)].dropna(subset=[TARGET])
+print(f"Holdout: last {HOLDOUT_EXPEDS} expeds ({len(holdout):,} rows). "
+      f"The fit stops before {FIRST_EMBARGO_EXPED}, leaving a {EMBARGO}-exped embargo.")
+
+# =====================================================================
+# 3. Launch the hosted training job, fenced off from the holdout
+# =====================================================================
+# gpu="CPU" is the cheapest tier and the right one for tree models; the default
+# is T4. features="all" is passed explicitly because the default is "small",
+# which on a dataset that publishes a single set is an alphabetical prefix of
+# the feature list rather than a curated subset.
+#
 # No `target=`: the platform trains on whichever column the dataset declares as
-# graded. Naming one here pins the job to a literal, and a column name that is
-# right on one dataset does not exist on the next. Pass `target=` only when you
-# deliberately want an AUXILIARY target (see get_dataset_schema -> targets).
+# graded. Pass `target=` only when you deliberately want an AUXILIARY target.
+print("Launching hosted train (LightGBM, CPU)...")
 job = client.train(
     model="lightgbm",
     features="all",
     gpu="CPU",
+    train_filter={"exped": {"cutoff_lt": FIRST_EMBARGO_EXPED}},
     params={
         "n_estimators": 2000,
         "learning_rate": 0.01,
@@ -90,50 +122,94 @@ if status["status"] != "completed":
         f"Job ended {status['status']}: {status.get('error_message')} "
         f". See client.get_job_log({job_id!r}) for the lifecycle trail."
     )
+# The job also reports its own CV metrics under status["metrics"]. They are not
+# used here: they are measured inside the job's folds, and its AIMC is an
+# estimate against a proxy. The score that decides anything is step 5's.
 
 # =====================================================================
-# 3. Read the platform-computed CV metrics
-# =====================================================================
-metrics = status.get("metrics") or {}
-cv = metrics.get("cv") or {}
-for name in ("corr", "aimc_estimate", "ncorr"):
-    panel = cv.get(name) or {}
-    if "mean" in panel:
-        print(f"  CV {name:>14}: {panel['mean']:+.4f} (std {panel.get('std', 0):.4f})")
-# aimc_estimate is a pre-submission estimate vs a consensus proxy: the real
-# AIMC comes from the diagnostics scoring after you submit.
-
-# =====================================================================
-# 4. Download the model and predict on the SERVED scored split
+# 4. Download the model, and make one function that scores a frame
 # =====================================================================
 pkl_path = client.download_model(job_id, "hosted_model.pkl")
 # Safe to unpickle: this is YOUR OWN model artifact from YOUR authenticated
 # train job (presigned, ownership-gated download): not third-party data.
 with open(pkl_path, "rb") as f:
-    model = pickle.load(f)
+    fitted = pickle.load(f)
 
+# The manifest is the record of what the model was fit on: the ordered feature
+# columns and the preprocessing the trainer applied. Reproduce that preprocessing
+# exactly. In particular, do NOT turn the missing value (-1) into NaN here: the
+# trainer fed -1 to the model as an ordinary value, so the model learned it that
+# way, and changing it at predict time would hand the model inputs it never saw.
 manifest = status.get("feature_manifest") or {}
-feature_order = manifest["features"]
+FEATURES = manifest["features"]
+FILL = float(manifest.get("fill_value", 0.0))
 
-# The missing sentinel is a dataset fact. `feature_encoding` declares the bin
-# count, the value range and the sentinel; read it rather than assuming -1. It is
-# absent on a tree that does not declare its encoding, which is not permission to
-# assume a default either, so fall back only as a last resort.
-encoding = (client.get_dataset_schema() or {}).get("feature_encoding") or {}
-MISSING = encoding.get("missing")
-if MISSING is None:            # absent OR published as null; neither declares a sentinel
-    MISSING = -1.0
-print(f"Missing sentinel: {MISSING!r}   (from schema['feature_encoding'])")
 
-# Predict on the split the platform is CURRENTLY scoring. In a multi-round
-# cadence event the open round is served as `live` (get_started's cadence
-# object names it); before round 1: and in a single-window event, the
-# scored split is `validation`. Tournament keys have no cadence object and
-# also land on `validation` here (this script's submit half is the
-# diagnostics loop, not a live-round submission).
-# `split_window` records WHICH round these rows came from. Step 5 needs it: the
-# lane is decided by the rows in hand, and that is a fact about this download,
-# not about whatever the clock says once the job and the predictions are done.
+def make_scorer(model, columns, fill):
+    """Score a frame, whichever shape of artifact the job returned.
+
+    A bare estimator takes a positional array, so columns are selected by name
+    and in the manifest's order. A callable takes the frame and returns a
+    one-column frame. `columns` and `fill` are bound by value so the pickled
+    wrapper in step 7 carries them with it.
+    """
+    if hasattr(model, "predict"):
+        def score(frame):
+            arr = frame[columns].fillna(fill).to_numpy("float32")
+            return pd.Series(model.predict(arr), index=frame.index)
+    elif callable(model):
+        def score(frame):
+            out = model(frame)
+            out = out.iloc[:, 0] if isinstance(out, pd.DataFrame) else pd.Series(out)
+            return pd.Series(out.to_numpy(), index=frame.index)
+    else:
+        raise SystemExit(f"Unrecognised artifact type: {type(model).__qualname__}")
+    return score
+
+
+score = make_scorer(fitted, FEATURES, FILL)
+print(f"Artifact: {type(fitted).__qualname__} "
+      f"({'estimator' if hasattr(fitted, 'predict') else 'callable'}), {len(FEATURES)} features")
+
+# =====================================================================
+# 5. Score it on the holdout, here
+# =====================================================================
+# CORR is the rank correlation between predictions and the target, computed
+# within each exped. Pearson on ranks is Spearman.
+def per_exped_corr(frame, pred_col):
+    return frame.groupby(EXPED)[[pred_col, TARGET]].apply(
+        lambda g: g[pred_col].rank().corr(g[TARGET].rank())
+    ).dropna()
+
+
+holdout = holdout.assign(prediction=score(holdout))
+corr = per_exped_corr(holdout, "prediction")
+print(f"Holdout CORR {corr.mean():+.4f} | std {corr.std():.4f} | "
+      f"sharpe {corr.mean() / corr.std():.2f} | {(corr > 0).mean():.0%} of expeds positive")
+
+# The benchmark on the same rows, scored the same way, so the comparison is
+# like-for-like. Only its `train` split is served during an event.
+try:
+    bench = pd.read_parquet(client.download_benchmark("futures", "train"))
+    bench_mean = bench.drop(columns=[EXPED], errors="ignore").mean(axis=1).rename("benchmark")
+    rows = holdout.join(bench_mean, how="inner")
+    print(f"Benchmark    {per_exped_corr(rows, 'benchmark').mean():+.4f} "
+          f"on {len(rows):,} of {len(holdout):,} holdout rows")
+except Exception as exc:  # noqa: BLE001, a comparison is useful but not required
+    print(f"Benchmark comparison unavailable: {exc}")
+
+# This model never saw the embargo or the holdout. That is the price of an
+# honest score: about 2% of the history. To submit a model fit on all of it,
+# launch a second job without train_filter once you are happy with this one.
+
+# =====================================================================
+# 6. Predict on the SERVED scored split
+# =====================================================================
+# In a multi-round cadence event the open round is served as `live`
+# (get_started's cadence object names it); before round 1, the scored split is
+# `validation`. `split_window` records WHICH round these rows came from. Step 8
+# needs it: the submit call is decided by the rows in hand, and that is a fact
+# about this download, not about whatever the clock says once they are ready.
 cadence = (client.get_started() or {}).get("cadence") or {}
 split = "live" if cadence.get("open_window") else "validation"
 split_window = cadence.get("open_window") if split == "live" else None
@@ -148,58 +224,45 @@ if cadence.get("intake_fenced"):
         "and re-run the submit."
     )
 print(f"Downloading the served {split} split and predicting locally...")
-val = pd.read_parquet(client.download_dataset(split=split))
-# The .pkl is a bare estimator trained on a positional array, so the manifest's
-# column order is authoritative: a different order returns plausible-but-wrong
-# predictions rather than an error.
-#
-# The trainer applies NO missing-value transform: features are bin-coded and the
-# missing sentinel IS the missing bin, so missingness is carried in the bins and
-# the served split carries no NaNs at all. The fill below is therefore a no-op
-# today and exists only so a malformed frame fails predictably. It fills with the
-# SENTINEL, not 0.0: 0 is a real bin, so filling with it would silently recode
-# "missing" as "lowest bin" the moment a NaN did appear. MISSING comes from
-# feature_encoding above rather than a literal, because writing the value in here
-# would inject an out-of-range code on a panel that declares a different one.
-x = val[feature_order].fillna(MISSING).to_numpy("float32")
-val_ids = val["id"] if "id" in val.columns else val.index
-submission = pd.DataFrame({"prediction": model.predict(x)}, index=pd.Index(val_ids, name="id"))
+served = pd.read_parquet(client.download_dataset(split=split))
+served_ids = served["id"] if "id" in served.columns else served.index   # the id IS the index
+submission = pd.DataFrame({"prediction": score(served).to_numpy()},
+                          index=pd.Index(served_ids, name="id"))
 submission.to_parquet("hosted_predictions.parquet")
 print(f"  {len(submission):,} predictions written to hosted_predictions.parquet")
 
 
-# The artifact you DOWNLOAD is a bare estimator, but the artifact you UPLOAD
-# cannot be: submitting this file as-is is refused with
+# =====================================================================
+# 7. Wrap the model in the one shape the upload gate accepts
+# =====================================================================
+# Everesteer runs one model shape: a cloudpickled predict() callable returning a
+# single-column DataFrame indexed by instrument id. Anything else is refused with
 #   400 "Everesteer runs one model shape: a cloudpickled callable."
-# So wrap it in a predict() callable and cloudpickle THAT. The wrapper selects
-# by name off the manifest, which is also what keeps the positional estimator
-# fed in the right column order.
-def build_predict(fitted, columns, missing):
-    # `missing` is closed over by value so the pickled artifact carries the
-    # sentinel with it, instead of depending on a global that only exists here.
-    # This one runs server-side, where the frame is not ours.
+# The wrapper reuses step 4's scorer, so it selects features by name and applies
+# the same preprocessing the model was fit with, whatever the job returned.
+def build_predict(scorer):
     def predict(live_features, live_benchmark_models=None):
-        arr = live_features[columns].fillna(missing).to_numpy("float32")
-        return pd.DataFrame({"prediction": fitted.predict(arr)}, index=live_features.index)
+        return pd.DataFrame({"prediction": scorer(live_features).to_numpy()},
+                            index=live_features.index)
 
     return predict
 
 
 upload_pkl = "hosted_model_callable.pkl"
 with open(upload_pkl, "wb") as f:
-    cloudpickle.dump(build_predict(model, feature_order, MISSING), f)
+    cloudpickle.dump(build_predict(score), f)
 
 # =====================================================================
-# 5. Submit down the lane THESE ROWS belong to. A round sent down the
-#    practice lane matches none of that round's ids and settles at $0,
-#    and so does the reverse, so the lane follows `split` from step 4 and
+# 8. Submit with the call THESE ROWS belong to. A round sent to the
+#    practice board matches none of that round's ids and settles at $0,
+#    and so does the reverse, so the call follows `split` from step 6 and
 #    the clock re-read below is only a guard on whether it is still valid.
 #    Several models at once: the submit_event_predictions_batch MCP TOOL
 #    (there is no batch method on the Python client - loop this call).
 # =====================================================================
 # create_model is idempotent WHEN YOU PASS A NAME: a 409 for a name you already
 # own resolves to the existing record with status="already_exists". Either way
-# read the response's `id`. That is the stable model_id every submit lane wants;
+# read the response's `id`. That is the stable model_id every submit call wants;
 # `name` is a mutable display label, and passing it where a model_id belongs is
 # a 403 "Model not owned by caller".
 MODEL_NAME = "hosted-lgbm-baseline"
@@ -207,7 +270,7 @@ MODEL_ID = client.create_model(name=MODEL_NAME)["id"]
 print(f"Model {MODEL_NAME!r} -> {MODEL_ID}")
 
 # Re-read the clock. Minutes passed while the job trained and the split
-# downloaded. This does NOT choose the lane -- `split` already did, back when the
+# downloaded. This does NOT choose the call -- `split` already did, back when the
 # rows were fetched -- it only answers whether those rows are still submittable.
 now_cadence = (client.get_started() or {}).get("cadence") or {}
 now_window = now_cadence.get("open_window")
@@ -222,7 +285,7 @@ if split == "live" and now_window != split_window:
     raise SystemExit(
         f"These rows are round {split_window!r}; the open round is now {now_window!r}. "
         "Re-run: download `live` again for the open round and predict on it. Sending them "
-        "down the practice lane instead would match zero ids and spend the upload."
+        "to the practice board instead would match zero ids and spend the upload."
     )
 if split == "validation" and now_window:
     raise SystemExit(
@@ -231,7 +294,7 @@ if split == "validation" and now_window:
     )
 
 if split == "live":
-    print(f"Round {split_window} is open and these are its rows: the event lane.")
+    print(f"Round {split_window} is open and these are its rows: submitting to the round.")
     result = client.submit_event_predictions(
         MODEL_ID,
         "hosted_predictions.parquet",
@@ -239,7 +302,7 @@ if split == "live":
         model_pkl_python_version=pyver,
     )
 else:
-    print("These are practice-board rows: the validation lane.")
+    print("These are practice-board rows: submitting to the practice board.")
     result = client.submit_validation_diagnostics(
         MODEL_ID,
         "hosted_predictions.parquet",
