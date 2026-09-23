@@ -71,7 +71,8 @@ def bail(step: str, exc: Exception) -> None:
 #     Branch on `cadence.open_window`, which is the round signal.
 #   * `uploads_remaining` is how many uploads you have LEFT, not your cap. The
 #     cap is a per-EVENT pool: it counts across every model and every round and
-#     does NOT replenish when a new round opens. Never hardcode a number.
+#     does NOT replenish when a new round opens. Only round submissions draw on
+#     it; practice-board uploads are free. Never hardcode a number.
 try:
     started = client.get_started()
 except Exception as exc:  # noqa: BLE001, first network call, report it plainly
@@ -359,10 +360,13 @@ if scored_split == "validation" and now_cadence.get("diagnostics_maintenance"):
 
 try:
     pyver = f"{sys.version_info.major}.{sys.version_info.minor}"
+    # Name the graded column on every upload. The SDK otherwise sends its own
+    # default, target_everest_20, a column this dataset does not have.
     if scored_split == "live":
         print(f"\nRound {scored_window} is open and these are its rows: the event lane.")
         result = client.submit_event_predictions(
-            MODEL_ID, predictions, model_pkl=model_path, model_pkl_python_version=pyver
+            MODEL_ID, predictions, target=target_col, model_pkl=model_path,
+            model_pkl_python_version=pyver,
         )
     else:
         # BOTH hackathon lanes require the .pkl. The SDK docstring calls model_pkl
@@ -371,7 +375,8 @@ try:
         #   400 "A model .pkl file is required for hackathon submissions."
         print("\nThese are practice-board rows: the validation lane.")
         result = client.submit_validation_diagnostics(
-            MODEL_ID, predictions, model_pkl=model_path, model_pkl_python_version=pyver
+            MODEL_ID, predictions, target=target_col, model_pkl=model_path,
+            model_pkl_python_version=pyver,
         )
 except Exception as exc:  # noqa: BLE001
     if scored_split == "validation" and getattr(exc, "status_code", None) == 503:

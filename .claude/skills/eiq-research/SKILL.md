@@ -77,8 +77,9 @@ drives the design stage.
 Translate the idea into a concrete plan. Invoke **`eiq-experiment-design`**, which is
 responsible for:
 
-- pinning the hypothesis and the one metric that decides win/lose (default: **CORR** as
-  the experiment-selection metric, with correlation-with-benchmark as the differentiation
+- pinning the hypothesis and the one metric that decides win/lose (default: the
+  **offline round score**, the live `explain_scoring` weights applied to holdout CORR and
+  the `contribution()` AIMC proxy, with correlation-with-benchmark as the differentiation
   guard and per-exped stability alongside),
 - choosing the feature scope and CV (exped-purged + embargoed. Never plain k-fold),
 - laying out **rounds of ~4-5 configs**, scout-sized first,
@@ -189,12 +190,13 @@ non-overfit CORR). Then invoke
 
 ## Defaults and principles
 
-- **CORR is the primary experiment-selection lever.** Accuracy is what both live surfaces
-  reward: call `explain_scoring` for the live weights and rank on those. No document,
-  this one included, can tell you which term leads. The weights are settings and they
-  have changed. Rank
-  configs by CORR first; per-exped stability is the robustness check;
-  correlation-with-benchmark, next, is the differentiation guard, not the objective.
+- **The offline round score is the experiment-selection metric.** Call `explain_scoring`
+  for the live weights and apply them to the terms you can measure on your holdout: CORR
+  and the `contribution()` AIMC proxy. No document, this one included, can tell you which
+  term leads. The weights are settings and they have changed. Do not rank configs on
+  CORR alone: the board ranks on the blend, and a model that wins one term can lose on
+  the score. Per-exped stability is the robustness check; correlation-with-benchmark is
+  the differentiation guard, not the objective.
 - **AIMC is the differentiation term, and here you can approximate it.** AIMC is your
   contribution over a **reference series**, and which series is a per-product setting:
   `explain_scoring`'s `metrics.aimc` is the authority. On a hackathon event it reports the

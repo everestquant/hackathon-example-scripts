@@ -32,7 +32,8 @@ into. Any recurring submission job runs on **your own** machine/cron/systemd.
   verbatim, renumbering them produces a submission that matches zero rows.
 - `get_started` (or the cheaper `get_status`) is the authority on what is open right now.
   Re-read it **immediately before every submit**. A round can open or close while you
-  were fitting, and the lane follows the clock, not your intent.
+  were fitting. Read it as a **guard, not the decision**: the lane follows the rows you
+  are holding, and the fresh read only tells you whether they are still submittable.
 - **Each round is a disjoint `id` namespace.** A prediction frame built for an earlier
   round will not match the open one, and submitting it scores nothing.
 - The scored target is whatever `get_dataset_schema` reports as `primary_target`.
@@ -138,6 +139,9 @@ a parquet file in that shape), not a `{instrument_id: prediction}` dict:
 import pandas as pd
 
 split = "live" if round_open else "validation"
+# Record WHICH round these rows belong to. The submit step chooses the lane from this,
+# a fact about the download, never from a clock read taken after it.
+scored_window = cadence.get("open_window") if split == "live" else None
 scored = pd.read_parquet(client.download_dataset(split=split))
 feature_cols = [c for c in scored.columns if c.startswith("feature_")]
 scored["prediction"] = my_model.predict(scored[feature_cols])   # your inference
@@ -166,42 +170,52 @@ assert len(predictions) == len(scored), "row count must match the served split"
 
 An upload spent on a malformed file is an upload you do not get back, your upload pool
 is a per-**event** total that does not replenish when a new round opens
-(`uploads_remaining` on `get_started`/`get_status`); never hardcode a number.
+(`uploads_remaining` on `get_started`/`get_status`); only round submissions draw on it,
+and practice-board uploads are free. Never hardcode a number.
 
 ## 6. Submit
 
-Re-read `get_started` immediately before submitting. A round can open or close while you
-were fitting, and the lane follows the clock, not your intent. `submit_event_predictions`
-and `submit_validation_diagnostics` take the same arguments and their ids are NOT
-interchangeable: a round's predictions sent down the practice lane is accepted (202) and
-fails minutes later on zero id overlap, costing the submission and settling anything
-staked on that model at nothing.
+Re-read `get_started` immediately before submitting, as a **guard**: a round can open or
+close while you were fitting. The lane itself comes from `split` and `scored_window` in
+step 3, the rows you are holding, never from this fresh read. Choosing the lane from the
+fresh read is exactly how it goes wrong: a round that opens while you fit sends practice
+rows down the event lane, and one that closes sends round rows down the practice lane.
+`submit_event_predictions` and `submit_validation_diagnostics` take the same arguments and
+their ids are NOT interchangeable: either mistake is accepted (202) and fails minutes later
+on zero id overlap, costing the submission and settling anything staked on that model at
+nothing. When the guard says the rows are no longer submittable, re-run from step 3; never
+redirect them at the other lane.
 
 ```python
 import sys
 
-now = client.get_started()
-now_cadence = now.get("cadence") or {}
+now_cadence = client.get_started().get("cadence") or {}
+now_window = now_cadence.get("open_window")
 pyver = f"{sys.version_info.major}.{sys.version_info.minor}"
+# Name the graded column: the SDK's default, target_everest_20, is not this dataset's.
+TARGET = client.get_dataset_schema()["primary_target"]
 
 if now_cadence.get("phase") == "done":
-    # the event is over: nothing is accepted on either lane
-    ...
-elif now_cadence.get("open_window") and not now_cadence.get("intake_fenced"):
+    ...   # the event is over: nothing is accepted on either lane
+elif now_window and now_cadence.get("intake_fenced"):
+    ...   # a round is opening or closing: wait, then re-run
+elif split == "live" and now_window != scored_window:
+    ...   # these rows' round is over: re-run step 3 on the open round
+elif split == "validation" and now_window:
+    ...   # a round opened while you fit: re-run step 3 and enter it (practice is never ranked)
+elif split == "validation" and now_cadence.get("diagnostics_maintenance"):
+    ...   # the practice board is briefly down for maintenance (503): retry later
+elif split == "live":
     result = client.submit_event_predictions(
-        MODEL_ID, predictions, model_pkl="model.pkl", model_pkl_python_version=pyver,
+        MODEL_ID, predictions, target=TARGET, model_pkl="model.pkl",
+        model_pkl_python_version=pyver,
     )
-elif now_cadence.get("open_window"):
-    # the round is opening or closing: wait rather than spending an upload into a refusal
-    ...
-elif now_cadence.get("diagnostics_maintenance"):
-    # the practice board is briefly down for maintenance (503): retry later
-    ...
 else:
     # build, or between rounds: intake_fenced is true here too, but it fences
     # ROUND submissions only. The practice board is open.
     result = client.submit_validation_diagnostics(
-        MODEL_ID, predictions, model_pkl="model.pkl", model_pkl_python_version=pyver,
+        MODEL_ID, predictions, target=TARGET, model_pkl="model.pkl",
+        model_pkl_python_version=pyver,
     )
 ```
 
@@ -267,7 +281,8 @@ assert len(predictions) == len(scored), "row count must match the served split"
 
 pyver = f"{sys.version_info.major}.{sys.version_info.minor}"
 res = client.submit_event_predictions(
-    MODEL_ID, predictions, model_pkl="model.pkl", model_pkl_python_version=pyver,
+    MODEL_ID, predictions, target=client.get_dataset_schema()["primary_target"],
+    model_pkl="model.pkl", model_pkl_python_version=pyver,
 )
 print("submitted", res)
 ```

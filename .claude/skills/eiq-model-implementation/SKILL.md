@@ -206,10 +206,22 @@ almost nothing, erring short is the leak:
 
 ```python
 EMBARGO = 20  # a deliberately wide round number, NOT a horizon read off the data
-tail = train["exped"].unique()[-100:]
-holdout = train[train["exped"].isin(tail)]
+# train's exped tokens are zero-padded, so their string order is their time order.
+ordered = sorted(train["exped"].unique())
+holdout_expeds = ordered[-100:]
+fit_rows = train[train["exped"] < ordered[-100 - EMBARGO]]   # stops EMBARGO expeds short
+holdout = train[train["exped"].isin(holdout_expeds)].dropna(subset=[TARGET])
 
-metrics = EverestAPI.evaluate(preds, holdout, target=TARGET)
+m = MyEverestModel().fit(fit_rows[feats], fit_rows[TARGET])
+holdout = holdout.assign(prediction=m.predict(holdout[feats]))
+
+# CORR is computed within each exped, then averaged. Don't use EverestAPI.evaluate for
+# this: it pools every row into one correlation, which is not the per-exped CORR the
+# board scores.
+corr = holdout.groupby("exped")[["prediction", TARGET]].apply(
+    lambda g: g["prediction"].rank().corr(g[TARGET].rank())
+).dropna()
+print(f"CORR {corr.mean():+.4f} | std {corr.std():.4f} | {(corr > 0).mean():.0%} of expeds positive")
 ```
 
 A healthy futures model usually lands at a **small positive** CORR, on the order of a few hundredths. But one holdout is a noisy read, and the two tails mean very different things:
@@ -237,7 +249,12 @@ from scipy.stats import spearmanr   # plus pandas as pd, numpy as np
 bench = pd.read_parquet(client.download_benchmark("futures", "train")).reset_index()
 bench_cols = [c for c in bench.columns if c not in ("id", EXPED)]
 bench["consensus"] = bench[bench_cols].mean(axis=1)
-holdout = holdout.merge(bench[["id", EXPED, "consensus"]], on=["id", EXPED], how="left")
+# The id is the parquet INDEX on both frames, so reset it on the holdout too before merging.
+# Merge on id AND exped: a benchmark built from an older train file can share ids with this
+# one on different expeds, and an id-only join scores it against the wrong rows.
+holdout = (holdout.reset_index()
+           .merge(bench[["id", EXPED, "consensus"]], on=["id", EXPED], how="left")
+           .set_index("id"))
 
 def neutralize(preds, neutralizers, proportion=1.0):
     """Remove `proportion` of whatever `neutralizers` explains linearly; return the residual."""
@@ -259,7 +276,7 @@ def contribution(df, pred_col, target_col=PRIMARY_TARGET, bench_col="consensus")
     return pd.Series(out)
 ```
 
-Check the merge before you trust the number: if `holdout["consensus"].notna().mean()` is 0, the holdout and the benchmark share no expeds and every `contribution()` reading will be empty. Both come from `train`, so that means the holdout carve is wrong.
+Check the merge before you trust the number: `holdout["consensus"].notna().mean()` is the share of holdout rows the benchmark covers on the same id and exped, and it should be close to 1. Both come from `train`, so a low share means one of two things: the holdout carve is wrong, or the benchmark was built from a different train file than the one served now (ids that exist in both but sit on different expeds). Either way, don't read `contribution()` until the share is back near 1, because the rows it does score are a biased few.
 
 Neutralization is **cross-sectional**, so `neutralize` is applied per exped in both uses: against the benchmark for the proxy above, and against a feature block for the exposure fix below.
 
